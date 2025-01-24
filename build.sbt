@@ -1,6 +1,6 @@
 import sbt.Keys.libraryDependencies
 
-scalaVersion := "3.6.2"
+scalaVersion := "3.6.3"
 version := "0.1.0-SNAPSHOT"
 organization := "qmf.poc.service"
 organizationName := "qmf"
@@ -17,6 +17,7 @@ lazy val root = (project in file("."))
       "dev.zio" %% "zio" % zioVersion,
       "dev.zio" %% "zio-config" % zioConfigVersion,
       "dev.zio" %% "zio-http" % zioHttpVersion,
+      "dev.zio" %% "zio-json" % "0.7.4",
       "org.apache.lucene" % "lucene-core" % luceneVersion,
       "org.apache.lucene" % "lucene-queryparser" % luceneVersion,
       "dev.zio" %% "zio-test" % zioVersion % Test,
