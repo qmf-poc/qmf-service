@@ -7,7 +7,7 @@ import zio.http.{Handler, WebSocketApp, WebSocketFrame}
 import zio.json.ast.{Json, JsonCursor}
 import zio.json.given
 
-case class JSONRPC(method: String, params: String)
+//case class JSONRPC(method: String, params: String)
 
 object JSONRPC:
   def parse(jsonString: String): Option[(String, String | java.math.BigDecimal)] =
@@ -24,20 +24,21 @@ object JSONRPC:
     }
 
 
-def agent: WebSocketApp[Broker] =
+def agentWebsocketApp: WebSocketApp[Broker] =
   Handler.webSocket { channel =>
     for
+      // listen for outgoing messages
       broker <- ZIO.service[Broker]
       _ <- broker.take.flatMap { message =>
-        channel.send(Read((WebSocketFrame.Text(message.jsonrpc)))) *> printLine(s"ws ==> $message")
+        channel.send(Read((WebSocketFrame.Text(message.jsonrpc)))) *> ZIO.logDebug(s"ws ==> $message")
       }.forever.fork
+      // listen for incoming messages
       _ <- channel.receiveAll {
-        case Read(WebSocketFrame.Text(frame)) =>
-          printLine(s"ws <== $frame") *>
-            JSONRPC.parse(frame).collect {
-              case ("ping", payload: String) => Ping(payload)
-              case ("alive", agent: String) => Alive(agent)
-            }.fold(ZIO.unit)(broker.handle)
+        case Read(WebSocketFrame.Text(frame)) => ZIO.logDebug(s"ws <== $frame") *> JSONRPC.parse(frame).collect {
+            case ("ping", payload: String) => Ping(payload)
+            case ("alive", agent: String) => Alive(agent)
+          }.fold(ZIO.logWarning(s"Fail parse: $frame").unit)
+          (broker.handle)
         case _ => ZIO.unit
       }
     yield ()
