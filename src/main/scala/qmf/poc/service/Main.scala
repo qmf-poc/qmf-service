@@ -30,4 +30,4 @@ object Main extends ZIOAppDefault:
       _ <- ZIO.never // TODO: should be clean up
     yield ()
 
-    program.provideSome(brokerLayer ++ serverLayer)
+    program.provideSome(repositoryLayer ++ brokerLayer ++ serverLayer)
