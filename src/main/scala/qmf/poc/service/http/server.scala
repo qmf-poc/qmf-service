@@ -7,15 +7,13 @@ import zio.http.*
 import zio.{Promise, ZIO}
 
 
-package object http
-
 def routes(broker: Broker) = Routes(
   GET / "ping" -> handler(ping),
   GET / "catalog" -> handler((_: Request) => broker.put(RequestSnapshot("db2inst1", "password")).ignore.as(Response.text("Refresh requested"))),
   GET / "agent" -> handler(agentWebsocketApp.toResponse),
 )
 
-def server: ZIO[Server.Config & Broker & Server /* & Scope*/ , Throwable, (Promise[Nothing, Unit], Promise[Nothing, Unit])] =
+def server: ZIO[/*Server.Config &*/ Broker & Server /*& Scope*/ , Throwable, (Promise[Nothing, Unit], Promise[Nothing, Unit])] =
   for
     httpStarted <- Promise.make[Nothing, Unit]
     shutdownSignal <- Promise.make[Nothing, Unit]

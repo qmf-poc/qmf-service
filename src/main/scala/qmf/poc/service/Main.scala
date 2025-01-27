@@ -1,12 +1,20 @@
 package qmf.poc.service
 
-import qmf.poc.service.http.handlers.ws.Broker
+import qmf.poc.service.http.handlers.ws.{Broker, BrokerLive, OutgoingMessage}
 import qmf.poc.service.http.server
+import qmf.poc.service.repository.{LuceneRepository, Repository}
 import zio.*
 import zio.Console.printLine
-import zio.http.Server
+import zio.http.{Driver, Server}
 
 object Main extends ZIOAppDefault:
+  private val repositoryLayer: ULayer[Repository] = LuceneRepository.layer
+  private val brokerQueueLayer: ULayer[Queue[OutgoingMessage]] = ZLayer(Queue.sliding[OutgoingMessage](100))
+  private val brokerLayer: ULayer[Broker] = (repositoryLayer ++ brokerQueueLayer) >>> BrokerLive.layer
+
+  private val httpConfigLayer: ULayer[Server.Config] = ZLayer.succeed(Server.Config.default.port(8080))
+  private val serverLayer: TaskLayer[Server] = httpConfigLayer >>> Server.live
+
   override val bootstrap: ZLayer[Any, Nothing, Unit] =
     Runtime.removeDefaultLoggers ++
       Runtime
@@ -22,8 +30,4 @@ object Main extends ZIOAppDefault:
       _ <- ZIO.never // TODO: should be clean up
     yield ()
 
-    program.provideSome(
-      ZLayer.succeed(Server.Config.default.port(8080)), // use predefined configuration
-      Broker.layer,
-      Server.live,
-    )
+    program.provideSome(brokerLayer ++ serverLayer)

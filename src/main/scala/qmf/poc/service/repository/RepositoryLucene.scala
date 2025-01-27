@@ -5,17 +5,16 @@ import org.apache.lucene.document.*
 import org.apache.lucene.index.{DirectoryReader, IndexWriter, IndexWriterConfig}
 import org.apache.lucene.queryparser.classic.QueryParser
 import org.apache.lucene.search.IndexSearcher
-import org.apache.lucene.store.Directory
+import org.apache.lucene.store.{ByteBuffersDirectory, Directory}
+import qmf.poc.service.catalog.{CatalogSnapshot, ObjectData}
 import qmf.poc.service.repository.*
-import zio.{CanFail, IO, ZIO}
+import zio.{CanFail, IO, ULayer, ZIO, ZLayer}
 
 type LuceneId = Int
 
-case class QMFObject(owner: String, name: String, typ: String)
-
 class RepositoryError(val th: Throwable) extends Exception
 
-class LuceneRepository(directory: Directory):
+class LuceneRepository(directory: Directory) extends Repository:
   private val analyzer = new StandardAnalyzer
   private val index = directory //new ByteBuffersDirectory
   private val config = IndexWriterConfig(analyzer)
@@ -36,12 +35,41 @@ class LuceneRepository(directory: Directory):
   private val r = DirectoryReader.open(index)
   private val s = new IndexSearcher(r)
 
-  def persist(qmfObject: QMFObject): IO[RepositoryError, Unit] = ZIO.blocking {
-    for
+  // TODO: blocking
+  override def load(snapshot: CatalogSnapshot): IO[RepositoryError, Unit] =
+    w.deleteAll()
+    initializeIndex()
+    val objectData = snapshot.objectData.map { d => (s"${d.owner}?{${d.name}?${d.`type`}", d) }.toMap
+    val objectRemarks = snapshot.objectRemarks.map { d => (s"${d.owner}?{${d.name}?${d.`type`}", d) }.toMap
+    val objectDirectories = snapshot.objectDirectories.map { d => (s"${d.owner}?{${d.name}?${d.`type`}", d) }.toMap
+    val keys = objectData.keySet.intersect(objectRemarks.keySet).intersect(objectDirectories.keySet)
+
+    val effects = keys.toList.map { key =>
+      val od = objectData.get(key)
+      val or = objectRemarks.get(key)
+      val odi = objectDirectories.get(key)
+
+      (od, or, odi) match {
+        case (Some(odValue), Some(orValue), Some(odiValue)) =>
+          val parts = key.split('?')
+          persist(QMFObject(odValue.owner, orValue.name, orValue.`type`))
+        case _ =>
+          ZIO.logWarning(s"Missing data for key: $key (od: $od, or: $or, odi: $odi)")
+      }
+    }
+    ZIO.collectAllDiscard(effects)
+
+  override def persist(qmfObject: QMFObject): IO[RepositoryError, Unit] = for
+    exists <- has(luceneId(qmfObject))
+    _ <- ZIO.when(exists)(add(qmfObject))
+    _ <- ZIO.logDebug(s"persist: $qmfObject")
+  yield ()
+
+
+  /*for
       exists <- has(luceneId(qmfObject))
       _ <- ZIO.unless(exists)(add(qmfObject))
-    yield ()
-  }
+    yield ()*/
 
   // TODO: currently the most simple search: "any substring of all fields"
   //      improvements:
@@ -79,3 +107,8 @@ class LuceneRepository(directory: Directory):
     w.commit()
     ()
   }.mapError(th => RepositoryError(th))
+
+object LuceneRepository:
+  def apply(directory: Directory = new ByteBuffersDirectory()) = new LuceneRepository(directory: Directory)
+
+  val layer: ULayer[Repository] = ZLayer.succeed(LuceneRepository())

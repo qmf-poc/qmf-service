@@ -1,6 +1,6 @@
 package qmf.poc.service.catalog
 
-class ObjectRemarks(
+case class ObjectRemarks(
   owner: String,
   name: String,
   `type`: String,
