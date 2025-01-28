@@ -5,15 +5,22 @@ import qmf.poc.service.http.handlers.ws.{Broker, RequestSnapshot, agentWebsocket
 import qmf.poc.service.repository.Repository
 import zio.http.Method.GET
 import zio.http.*
+import zio.http.Header.{AccessControlAllowOrigin, Origin}
+import zio.http.Middleware.{CorsConfig, cors}
 import zio.{Promise, ZIO}
 
+private val config: CorsConfig =
+  CorsConfig(
+    allowedOrigin = (_ => AccessControlAllowOrigin.parse("*").toOption),
+  )
 
 def routes(broker: Broker, repository: Repository) = Routes(
   GET / "ping" -> handler(ping),
-  GET / "catalog" -> handler((_: Request) => broker.put(RequestSnapshot("db2inst1", "password")).ignore.as(Response.text("Refresh requested"))),
+  GET / "catalog" ->
+    handler((_: Request) => broker.put(RequestSnapshot("db2inst1", "password")).ignore.as(Response.text("Refresh requested"))),
   GET / "agent" -> handler(agentWebsocketApp.toResponse),
   GET / "retrieve" -> handler(retrieve(repository))
-)
+) @@ cors(config)
 
 def server: ZIO[Broker & Server & Repository, Throwable, (Promise[Nothing, Unit], Promise[Nothing, Unit])] =
   for

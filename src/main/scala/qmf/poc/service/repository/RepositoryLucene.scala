@@ -32,12 +32,27 @@ class LuceneRepository(directory: Directory) extends Repository:
 
   initializeIndex()
 
-  private val r = DirectoryReader.open(index)
-  private val s = new IndexSearcher(r)
+  // TODO: refactor
+  private var rOpt: Option[DirectoryReader] = None
+
+  private def r: DirectoryReader =
+    rOpt match
+      case Some(reader) =>
+        val updatedReader = DirectoryReader.openIfChanged(reader, w)
+        if (updatedReader == null)
+          reader
+        else
+          rOpt = Some(updatedReader)
+          updatedReader
+      case None =>
+        val newReader = DirectoryReader.open(index)
+        rOpt = Some(newReader)
+        newReader
 
   // TODO: blocking
   override def load(snapshot: CatalogSnapshot): IO[RepositoryError, Unit] =
     w.deleteAll()
+    w.commit()
     initializeIndex()
     val objectData = snapshot.objectData.map { d => (s"${d.owner}?{${d.name}?${d.`type`}", d) }.toMap
     val objectRemarks = snapshot.objectRemarks.map { d => (s"${d.owner}?{${d.name}?${d.`type`}", d) }.toMap
@@ -61,7 +76,7 @@ class LuceneRepository(directory: Directory) extends Repository:
 
   override def persist(qmfObject: QMFObject): IO[RepositoryError, Unit] = for
     exists <- has(luceneId(qmfObject))
-    _ <- ZIO.when(exists)(add(qmfObject))
+    _ <- ZIO.when(!exists)(add(qmfObject))
     _ <- ZIO.logDebug(s"persist: $qmfObject")
   yield ()
 
@@ -76,8 +91,16 @@ class LuceneRepository(directory: Directory) extends Repository:
   //      - detect * and ? in the query string and use WildcardQuery
   //      - detect : in the query string and limit the search to the field before the :
   def retrieve(queryString: String): IO[RepositoryError, Seq[QMFObject]] = ZIO.attemptBlocking {
+    val s = new IndexSearcher(r)
     val queryParser = new QueryParser("record", analyzer)
-    val query = queryParser.parse(queryString)
+    val query = queryParser.parse(if (queryString.length > 2) {
+      queryString + "~1"
+    } else if (queryString.nonEmpty) {
+      queryString + "*"
+    } else {
+      queryString + "#"
+    }
+    )
     val results = s.search(query, 10)
     val storedFields = s.storedFields()
     val hits = results.scoreDocs
@@ -85,13 +108,16 @@ class LuceneRepository(directory: Directory) extends Repository:
       val doc = storedFields.document(hit.doc)
       QMFObject(doc.get("owner"), doc.get("name"), doc.get("type"))
     }).toSeq
-  }.mapError(th => RepositoryError(th))
+  }.mapError(th =>
+    RepositoryError(th)
+  )
 
   private inline def luceneId(a: Any): LuceneId =
     a.hashCode()
 
   private def has(id: LuceneId): IO[RepositoryError, Boolean] = ZIO.attempt {
     val query = IntPoint.newExactQuery("ObjectId", id)
+    val s = new IndexSearcher(r)
     val results = s.search(query, 1)
     results.totalHits.value() > 0
   }.mapError(th => RepositoryError(th))

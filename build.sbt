@@ -10,9 +10,19 @@ val zioConfigVersion = "4.0.3"
 val zioHttpVersion = "3.0.1"
 val luceneVersion = "10.1.0"
 
+javacOptions ++= Seq("-source", "1.8", "-target", "1.8")
+scalacOptions ++= Seq("-java-output-version", "8")
+
+assemblyMergeStrategy in assembly := {
+  case "module-info.class" => MergeStrategy.discard
+  case "META-INF/io.netty.versions.properties" => MergeStrategy.discard
+  case x => (assemblyMergeStrategy in assembly).value(x)
+}
+
 lazy val root = (project in file("."))
   .settings(
     name := "service",
+    assembly / mainClass := Some("qmf.poc.service.Main"),
     libraryDependencies ++= Seq(
       "dev.zio" %% "zio" % zioVersion,
       "dev.zio" %% "zio-config" % zioConfigVersion,

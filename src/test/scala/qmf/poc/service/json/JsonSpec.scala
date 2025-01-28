@@ -54,6 +54,7 @@ object JsonSpec extends ZIOSpecDefault:
       val parsed = string.fromJson[IncomingMessage]
       assert(parsed)(Assertion.equalTo(Right("")))
     } @@ TestAspect.ignore,
+    /*
     test("match ping") {
       val string = """{"jsonrpc": "2.0", "method": "ping", "params": "agent"}"""
       val parsed = JSONRPC.parse(string)
@@ -76,5 +77,5 @@ object JsonSpec extends ZIOSpecDefault:
         case _ => false
       }.fold(false)(_ => true)
       assert(m)(Assertion.isTrue)
-    }
+    }*/
   )

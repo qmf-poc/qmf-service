@@ -16,17 +16,10 @@
     <option name="continuations" value="true" />
     <option name="incrementalityType" value="IDEA" />
     <profile name="sbt 1" modules="service">
-      <option name="dynamics" value="true" />
-      <option name="postfixOps" value="true" />
-      <option name="reflectiveCalls" value="true" />
-      <option name="implicitConversions" value="true" />
-      <option name="higherKinds" value="true" />
-      <option name="existentials" value="true" />
-      <option name="macros" value="true" />
-      <option name="deprecationWarnings" value="true" />
-      <option name="uncheckedWarnings" value="true" />
-      <option name="featureWarnings" value="true" />
-      <option name="explainTypeErrors" value="true" />
+      <parameters>
+        <parameter value="-java-output-version" />
+        <parameter value="8" />
+      </parameters>
     </profile>
   </component>
 </project>

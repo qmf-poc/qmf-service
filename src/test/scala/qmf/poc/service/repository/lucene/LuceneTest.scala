@@ -169,6 +169,11 @@ class LuceneTest extends munit.FunSuite:
     val config = IndexWriterConfig(analyzer)
     val w = new IndexWriter(index, config)
 
+    val doc0 = new Document()
+    doc0.add(new IntPoint("id", 0))
+    w.addDocument(doc0)
+    w.commit()
+
     val doc = new Document()
     doc.add(new IntPoint("id", -1))
     doc.add(new TextField("record", "payload 1 payload 2", org.apache.lucene.document.Field.Store.YES))

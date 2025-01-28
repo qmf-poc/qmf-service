@@ -12,7 +12,7 @@ object Main extends ZIOAppDefault:
   private val brokerQueueLayer: ULayer[Queue[OutgoingMessage]] = ZLayer(Queue.sliding[OutgoingMessage](100))
   private val brokerLayer: ULayer[Broker] = (repositoryLayer ++ brokerQueueLayer) >>> BrokerLive.layer
 
-  private val httpConfigLayer: ULayer[Server.Config] = ZLayer.succeed(Server.Config.default.port(8080))
+  private val httpConfigLayer: ULayer[Server.Config] = ZLayer.succeed(Server.Config.default.port(8081))
   private val serverLayer: TaskLayer[Server] = httpConfigLayer >>> Server.live
 
   override val bootstrap: ZLayer[Any, Nothing, Unit] =
