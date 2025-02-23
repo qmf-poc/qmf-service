@@ -1,6 +1,6 @@
 package qmf.poc.service
 
-import qmf.poc.service.http.handlers.ws.{Broker, BrokerLive, OutgoingMessage}
+import qmf.poc.service.http.handlers.ws.{Broker, BrokerLive, OutgoingMessage, Ping}
 import qmf.poc.service.http.server
 import qmf.poc.service.repository.{LuceneRepository, Repository}
 import zio.*

@@ -13,7 +13,7 @@ object LuceneRepositorySpec extends ZIOSpecDefault:
       val luceneRepository = LuceneRepository(new ByteBuffersDirectory())
       // Act
       for {
-        _ <- luceneRepository.persist(QMFObject("owner", "test", "type"))
+        _ <- luceneRepository.persist(QMFObject("owner", "test", "type", "appldata"))
         // Assert
       } yield assertCompletes
     },
@@ -22,27 +22,27 @@ object LuceneRepositorySpec extends ZIOSpecDefault:
       val luceneRepository = LuceneRepository(new ByteBuffersDirectory())
       // Act
       for {
-        _ <- luceneRepository.persist(QMFObject("owner", "test", "type"))
+        _ <- luceneRepository.persist(QMFObject("owner", "test", "type", "appldata"))
         v <- luceneRepository.retrieve("owne")
         // Assert
-      } yield   assert(v)(Assertion.equalTo(Seq(QMFObject("owner", "test", "type"))))
+      } yield   assert(v)(Assertion.equalTo(Seq(QMFObject("owner", "test", "type", "appldata"))))
     },
     test("should find a document by fusion") {
       // Arrange
       val luceneRepository = LuceneRepository(new ByteBuffersDirectory())
       // Act
       for {
-        _ <- luceneRepository.persist(QMFObject("owner", "test", "type"))
+        _ <- luceneRepository.persist(QMFObject("owner", "test", "type", "appldata"))
         v <- luceneRepository.retrieve("test")
         // Assert
-      } yield   assert(v)(Assertion.equalTo(Seq(QMFObject("owner", "test", "type"))))
+      } yield   assert(v)(Assertion.equalTo(Seq(QMFObject("owner", "test", "type", "appldata"))))
     },
     test("should handle empty search") {
       // Arrange
       val luceneRepository = LuceneRepository(new ByteBuffersDirectory())
       // Act
       for {
-        _ <- luceneRepository.persist(QMFObject("owner", "test", "type"))
+        _ <- luceneRepository.persist(QMFObject("owner", "test", "type", "appldata"))
         v <- luceneRepository.retrieve("")
         // Assert
       } yield   assert(v)(Assertion.equalTo(Seq()))
@@ -52,17 +52,17 @@ object LuceneRepositorySpec extends ZIOSpecDefault:
       val luceneRepository = LuceneRepository(new ByteBuffersDirectory())
       // Act
       for {
-        _ <- luceneRepository.persist(QMFObject("owner", "test", "type"))
+        _ <- luceneRepository.persist(QMFObject("owner", "test", "type", "appldata"))
         v <- luceneRepository.retrieve("o")
         // Assert
-      } yield   assert(v)(Assertion.equalTo(Seq(QMFObject("owner", "test", "type"))))
+      } yield   assert(v)(Assertion.equalTo(Seq(QMFObject("owner", "test", "type", "appldata"))))
     },
     test("should not find an irrelevant document") {
       // Arrange
       val luceneRepository = LuceneRepository(new ByteBuffersDirectory())
       // Act
       for {
-        _ <- luceneRepository.persist(QMFObject("owner", "test", "type"))
+        _ <- luceneRepository.persist(QMFObject("owner", "test", "type", "appldata"))
         v <- luceneRepository.retrieve("aaaa")
         // Assert
       } yield   assert(v)(Assertion.equalTo(Seq()))

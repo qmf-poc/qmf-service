@@ -66,7 +66,7 @@ class LuceneRepository(directory: Directory) extends Repository:
       (od, or, odi) match {
         case (Some(odValue), Some(orValue), Some(odiValue)) =>
           val parts = key.split('?')
-          persist(QMFObject(odValue.owner, orValue.name, orValue.`type`))
+          persist(QMFObject(odValue.owner, orValue.name, orValue.`type`, new String(odValue.appldata, "IBM1047")))
         case _ =>
           ZIO.logWarning(s"Missing data for key: $key (od: $od, or: $or, odi: $odi)")
       }
@@ -105,7 +105,7 @@ class LuceneRepository(directory: Directory) extends Repository:
       hits
         .map(hit => {
           val doc = storedFields.document(hit.doc)
-          QMFObject(doc.get("owner"), doc.get("name"), doc.get("type"))
+          QMFObject(doc.get("owner"), doc.get("name"), doc.get("type"), doc.get("appldata"))
         })
         .toSeq
     }

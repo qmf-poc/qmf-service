@@ -6,18 +6,15 @@ import zio.http.{ChannelEvent, Handler, WebSocketApp, WebSocketFrame}
 import zio.json.given
 import zio.{Ref, Task, ZIO}
 
-def handleIncomingMessage(frameAccumulator: Ref[Array[Byte]], broker: Broker): ZIO[Any, Nothing, Task[Unit]] =
+def handleIncomingMessage(frameAccumulator: Ref[Array[Byte]], broker: Broker) =
   frameAccumulator
     .getAndSet(Array[Byte]())
     .flatMap(accumulated =>
-      ZIO
-        .fromEither(
-          String(accumulated, "ASCII")
-            .fromJson[IncomingMessage]
-        )
+      String(accumulated, "ASCII")
+        .fromJson[IncomingMessage]
         .fold(
           error => ZIO.logWarning(s"Parse error: $error (length: ${accumulated.length})"),
-          broker.handle
+          message => ZIO.logDebug(s"Send message $message to broker") *> broker.handle(message)
         )
     )
 
@@ -47,13 +44,13 @@ def agentWebsocketApp: WebSocketApp[Broker] =
               ZIO.logDebug(s"ws <== Ping")
             case frame: WebSocketFrame.Text =>
               for {
-                _ <- ZIO.logDebug(s"ws <== $frame")
+                _ <- ZIO.logDebug(s"ws <== WebSocketFrame.Text(${frame.text.length})")
                 _ <- frameAccumulator.update(_ ++ frame.text.getBytes)
                 _ <- ZIO.when(frame.isFinal)(handleIncomingMessage(frameAccumulator, broker))
               } yield ()
             case frame: WebSocketFrame.Continuation =>
               for
-                _ <- ZIO.logDebug(s"ws <== $frame")
+                _ <- ZIO.logDebug(s"ws <== WebSocketFrame.Continuation(${frame.buffer.length})")
                 _ <- frameAccumulator.update(_ ++ frame.buffer)
                 _ <- ZIO.when(frame.isFinal)(handleIncomingMessage(frameAccumulator, broker))
               yield ()
