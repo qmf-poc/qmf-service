@@ -1,3 +1,3 @@
 package qmf.poc.service.catalog
 
-case class ObjectData(val owner: String, val name: String, `type`: String, val seq: Short, val appldata: Array[Byte])
+case class ObjectData(owner: String, name: String, `type`: String, seq: Short, appldata: Array[Byte])

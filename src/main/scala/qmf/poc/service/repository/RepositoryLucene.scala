@@ -2,24 +2,26 @@ package qmf.poc.service.repository
 
 import org.apache.lucene.analysis.standard.StandardAnalyzer
 import org.apache.lucene.document.*
-import org.apache.lucene.index.{DirectoryReader, IndexWriter, IndexWriterConfig}
+import org.apache.lucene.index.{DirectoryReader, IndexNotFoundException, IndexWriter, IndexWriterConfig}
 import org.apache.lucene.queryparser.classic.QueryParser
-import org.apache.lucene.search.IndexSearcher
+import org.apache.lucene.search.{IndexSearcher, MatchAllDocsQuery}
 import org.apache.lucene.store.{ByteBuffersDirectory, Directory}
-import qmf.poc.service.catalog.{CatalogSnapshot, ObjectData}
+import qmf.poc.service.catalog.{CatalogSnapshot, ObjectData, ObjectDirectory, ObjectRemarks}
 import qmf.poc.service.repository.*
-import zio.{CanFail, IO, Task, ULayer, ZIO, ZLayer}
+import zio.{CanFail, FiberRef, IO, Task, ULayer, ZIO, ZLayer}
 
 type LuceneId = Int
 
 class RepositoryError(val th: Throwable) extends Exception
+
+private class CatalogSnapshotItem(val data: ObjectData, val directory: ObjectDirectory, val remarks: ObjectRemarks)
 
 class LuceneRepository(directory: Directory) extends Repository:
   private val analyzer = new StandardAnalyzer
   private val index = directory // new ByteBuffersDirectory
   private val config = IndexWriterConfig(analyzer)
   private val w = new IndexWriter(index, config)
-
+  /*
   private def initializeIndex(): Unit = {
     if (DirectoryReader.indexExists(index)) {}
     else {
@@ -31,6 +33,7 @@ class LuceneRepository(directory: Directory) extends Repository:
   }
 
   initializeIndex()
+   */
 
   // TODO: refactor
   private var rOpt: Option[DirectoryReader] = None
@@ -49,40 +52,42 @@ class LuceneRepository(directory: Directory) extends Repository:
         newReader
 
   // TODO: blocking
-  override def load(snapshot: CatalogSnapshot): IO[RepositoryError, Unit] =
-    w.deleteAll()
-    w.commit()
-    initializeIndex()
-    val objectData = snapshot.objectData.map { d => (s"${d.owner}?{${d.name}?${d.`type`}", d) }.toMap
-    val objectRemarks = snapshot.objectRemarks.map { d => (s"${d.owner}?{${d.name}?${d.`type`}", d) }.toMap
-    val objectDirectories = snapshot.objectDirectories.map { d => (s"${d.owner}?{${d.name}?${d.`type`}", d) }.toMap
-    val keys = objectData.keySet.intersect(objectRemarks.keySet).intersect(objectDirectories.keySet)
-
-    val effects = keys.toList.map { key =>
-      val od = objectData.get(key)
-      val or = objectRemarks.get(key)
-      val odi = objectDirectories.get(key)
-
+  override def load(snapshot: CatalogSnapshot): IO[RepositoryError, Int] = ZIO.scoped(for {
+    _ <- ZIO
+      .attemptBlocking {
+        w.deleteAll()
+        w.commit()
+        // initializeIndex()
+      }
+      .onError(cause => ZIO.logErrorCause(cause))
+      .mapError(th => RepositoryError(th))
+    data = snapshot.objectData.map { d => (s"${d.owner}?${d.name}?${d.`type`}", d) }.toMap
+    remarks = snapshot.objectRemarks.map { d => (s"${d.owner}?${d.name}?${d.`type`}", d) }.toMap
+    directories = snapshot.objectDirectories.map { d => (s"${d.owner}?${d.name}?${d.`type`}", d) }.toMap
+    keys = data.keySet.intersect(remarks.keySet).intersect(directories.keySet)
+    counter <- FiberRef.make(0)
+    _ <- ZIO.foreachDiscard(keys) { key =>
+      val od = data.get(key)
+      val or = remarks.get(key)
+      val odi = directories.get(key)
       (od, or, odi) match {
         case (Some(odValue), Some(orValue), Some(odiValue)) =>
           val parts = key.split('?')
-          persist(QMFObject(odValue.owner, orValue.name, orValue.`type`, new String(odValue.appldata, "IBM1047")))
+          persist(QMFObject(odValue.owner, orValue.name, orValue.`type`, odValue.appldata))
+            .tap(Unit => counter.update(_ + 1))
+            .onError(cause => ZIO.logErrorCause(cause))
         case _ =>
           ZIO.logWarning(s"Missing data for key: $key (od: $od, or: $or, odi: $odi)")
       }
     }
-    ZIO.collectAllDiscard(effects) // TODO: errors handling
+    c <- counter.get
+  } yield c)
 
   override def persist(qmfObject: QMFObject): IO[RepositoryError, Unit] = for
     exists <- has(luceneId(qmfObject))
     _ <- ZIO.when(!exists)(add(qmfObject))
     _ <- ZIO.logDebug(s"persist: $qmfObject")
   yield ()
-
-  /*for
-      exists <- has(luceneId(qmfObject))
-      _ <- ZIO.unless(exists)(add(qmfObject))
-    yield ()*/
 
   // TODO: currently the most simple search: "any substring of all fields"
   //      improvements:
@@ -92,22 +97,28 @@ class LuceneRepository(directory: Directory) extends Repository:
     .attemptBlocking {
       val s = new IndexSearcher(r)
       val queryParser = new QueryParser("record", analyzer)
-      val query = queryParser.parse(if (queryString.length > 2) {
-        queryString + "~1"
-      } else if (queryString.nonEmpty) {
-        queryString + "*"
-      } else {
-        queryString + "#"
-      })
+      val query =
+        if (queryString.length <= 2)
+          new MatchAllDocsQuery()
+        else {
+          queryParser.parse(queryString)
+        }
       val results = s.search(query, 10)
       val storedFields = s.storedFields()
       val hits = results.scoreDocs
       hits
         .map(hit => {
           val doc = storedFields.document(hit.doc)
-          QMFObject(doc.get("owner"), doc.get("name"), doc.get("type"), doc.get("appldata"))
+          val owner = doc.get("owner")
+          val name = doc.get("name")
+          val typ = doc.get("type")
+          val appldata = doc.get("appldata")
+          QMFObject(owner, name, typ, appldata)
         })
         .toSeq
+    }
+    .catchSome { case _: IndexNotFoundException =>
+      ZIO.succeed(Seq())
     }
     .mapError(th => RepositoryError(th))
 
@@ -121,16 +132,20 @@ class LuceneRepository(directory: Directory) extends Repository:
       val results = s.search(query, 1)
       results.totalHits.value() > 0
     }
+    .catchSome { case _: IndexNotFoundException =>
+      ZIO.succeed(false)
+    }
     .mapError(th => RepositoryError(th))
 
   private def add(qmfObject: QMFObject): IO[RepositoryError, Unit] = ZIO
     .attempt {
       val doc = new Document()
       doc.add(new IntPoint("id", luceneId(qmfObject)))
-      doc.add(new TextField("record", qmfObject.owner + " " + qmfObject.name + " " + qmfObject.typ, Field.Store.YES))
+      doc.add(new TextField("record", qmfObject.name + " " + qmfObject.typ + " " + qmfObject.owner, Field.Store.YES))
       doc.add(new StoredField("owner", qmfObject.owner))
       doc.add(new StoredField("name", qmfObject.name))
       doc.add(new StoredField("type", qmfObject.typ))
+      doc.add(new TextField("appldata", qmfObject.applData, Field.Store.YES))
       w.addDocument(doc)
       w.commit()
       ()

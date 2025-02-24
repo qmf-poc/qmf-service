@@ -9,7 +9,7 @@ import zio.{IO, Layer, Queue, Ref, ULayer, ZLayer}
 
 object Mock:
   val repositoryLive: Repository = new Repository:
-    def load(snapshot: CatalogSnapshot): IO[RepositoryError, Unit] = ???
+    def load(snapshot: CatalogSnapshot): IO[RepositoryError, Int] = ???
 
     def persist(qmfObject: QMFObject): IO[RepositoryError, Unit] = ???
 

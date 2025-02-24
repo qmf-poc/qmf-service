@@ -4,7 +4,7 @@ import qmf.poc.service.http.handlers.ws.IncomingMessage.given
 import zio.http.ChannelEvent.Read
 import zio.http.{ChannelEvent, Handler, WebSocketApp, WebSocketFrame}
 import zio.json.given
-import zio.{Ref, Task, ZIO}
+import zio.{Ref, ZIO}
 
 def handleIncomingMessage(frameAccumulator: Ref[Array[Byte]], broker: Broker) =
   frameAccumulator
