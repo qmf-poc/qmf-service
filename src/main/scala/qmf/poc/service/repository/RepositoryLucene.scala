@@ -12,7 +12,7 @@ import zio.{CanFail, FiberRef, IO, Task, ULayer, ZIO, ZLayer}
 
 type LuceneId = Int
 
-class RepositoryError(val th: Throwable) extends Exception
+class RepositoryError(th: Throwable) extends Exception(th.getMessage, th)
 
 private class CatalogSnapshotItem(val data: ObjectData, val directory: ObjectDirectory, val remarks: ObjectRemarks)
 
@@ -21,19 +21,6 @@ class LuceneRepository(directory: Directory) extends Repository:
   private val index = directory // new ByteBuffersDirectory
   private val config = IndexWriterConfig(analyzer)
   private val w = new IndexWriter(index, config)
-  /*
-  private def initializeIndex(): Unit = {
-    if (DirectoryReader.indexExists(index)) {}
-    else {
-      val doc = new Document()
-      doc.add(new IntPoint("id", 0))
-      w.addDocument(doc)
-      w.commit()
-    }
-  }
-
-  initializeIndex()
-   */
 
   // TODO: refactor
   private var rOpt: Option[DirectoryReader] = None
@@ -95,15 +82,17 @@ class LuceneRepository(directory: Directory) extends Repository:
   //      - detect : in the query string and limit the search to the field before the :
   def retrieve(queryString: String): IO[RepositoryError, Seq[QMFObject]] = ZIO
     .attemptBlocking {
+      // TODO: IndexSearcher should be memoized
       val s = new IndexSearcher(r)
       val queryParser = new QueryParser("record", analyzer)
+      queryParser.setAllowLeadingWildcard(true)
       val query =
         if (queryString.length <= 2)
           new MatchAllDocsQuery()
         else {
-          queryParser.parse(queryString)
+          queryParser.parse(s"*$queryString*")
         }
-      val results = s.search(query, 10)
+      val results = s.search(query, Int.MaxValue)
       val storedFields = s.storedFields()
       val hits = results.scoreDocs
       hits
@@ -141,7 +130,8 @@ class LuceneRepository(directory: Directory) extends Repository:
     .attempt {
       val doc = new Document()
       doc.add(new IntPoint("id", luceneId(qmfObject)))
-      doc.add(new TextField("record", qmfObject.name + " " + qmfObject.typ + " " + qmfObject.owner, Field.Store.YES))
+      val record = qmfObject.name + " " + qmfObject.typ + " " + qmfObject.owner
+      doc.add(new TextField("record", record, Field.Store.YES))
       doc.add(new StoredField("owner", qmfObject.owner))
       doc.add(new StoredField("name", qmfObject.name))
       doc.add(new StoredField("type", qmfObject.typ))

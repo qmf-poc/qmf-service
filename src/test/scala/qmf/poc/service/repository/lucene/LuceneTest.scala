@@ -198,3 +198,67 @@ class LuceneTest extends munit.FunSuite:
     val d1 = sf1.document(docId)
     assertEquals(d1.get("field1"), "payload 1")
     assertEquals(d1.get("field2"), "something 2")
+
+  test("the document can be searched by *mask*"):
+    val analyzer = new StandardAnalyzer
+    val index = new ByteBuffersDirectory
+    val config = IndexWriterConfig(analyzer)
+    val w = new IndexWriter(index, config)
+
+    val doc = new Document()
+    doc.add(new IntPoint("id", -1))
+    doc.add(new TextField("field1", "payload 1", org.apache.lucene.document.Field.Store.YES))
+    doc.add(new TextField("field2", "something 2", org.apache.lucene.document.Field.Store.YES))
+    w.addDocument(doc)
+    w.commit()
+
+    val r = DirectoryReader.open(index)
+    val sf0 = r.storedFields()
+
+    // Assert the document can be searched by int point field id
+    val qs = "*yloa*"
+    val qp = new QueryParser("field1", analyzer)
+    qp.setAllowLeadingWildcard(true)
+    val q = qp.parse(qs)
+    val s = new IndexSearcher(r)
+    val results = s.search(q, 10)
+    assertEquals(results.totalHits.value, 1L)
+
+    val hits = results.scoreDocs
+    val docId = hits(0).doc
+    val sf1 = s.storedFields()
+    val d1 = sf1.document(docId)
+    assertEquals(d1.get("field1"), "payload 1")
+    assertEquals(d1.get("field2"), "something 2")
+
+  test("the document can be searched by *mask* if starts with mask"):
+    val analyzer = new StandardAnalyzer
+    val index = new ByteBuffersDirectory
+    val config = IndexWriterConfig(analyzer)
+    val w = new IndexWriter(index, config)
+
+    val doc = new Document()
+    doc.add(new IntPoint("id", -1))
+    doc.add(new TextField("field1", "payload 1", org.apache.lucene.document.Field.Store.YES))
+    doc.add(new TextField("field2", "something 2", org.apache.lucene.document.Field.Store.YES))
+    w.addDocument(doc)
+    w.commit()
+
+    val r = DirectoryReader.open(index)
+    val sf0 = r.storedFields()
+
+    // Assert the document can be searched by int point field id
+    val qs = "*payloa*"
+    val qp = new QueryParser("field1", analyzer)
+    qp.setAllowLeadingWildcard(true)
+    val q = qp.parse(qs)
+    val s = new IndexSearcher(r)
+    val results = s.search(q, 10)
+    assertEquals(results.totalHits.value, 1L)
+
+    val hits = results.scoreDocs
+    val docId = hits(0).doc
+    val sf1 = s.storedFields()
+    val d1 = sf1.document(docId)
+    assertEquals(d1.get("field1"), "payload 1")
+    assertEquals(d1.get("field2"), "something 2")
