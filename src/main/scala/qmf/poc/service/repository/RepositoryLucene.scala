@@ -60,7 +60,7 @@ class LuceneRepository(directory: Directory) extends Repository:
       (od, or, odi) match {
         case (Some(odValue), Some(orValue), Some(odiValue)) =>
           val parts = key.split('?')
-          persist(QMFObject(odValue.owner, orValue.name, orValue.`type`, odValue.appldata))
+          persist(QMFObject(odValue.owner, orValue.name, orValue.`type`, orValue.remarks, odValue.appldata))
             .tap(Unit => counter.update(_ + 1))
             .onError(cause => ZIO.logErrorCause(cause))
         case _ =>
@@ -101,8 +101,9 @@ class LuceneRepository(directory: Directory) extends Repository:
           val owner = doc.get("owner")
           val name = doc.get("name")
           val typ = doc.get("type")
+          val remarks = doc.get("remarks")
           val appldata = doc.get("appldata")
-          QMFObject(owner, name, typ, appldata)
+          QMFObject(owner, name, typ, remarks, appldata)
         })
         .toSeq
     }
@@ -136,6 +137,7 @@ class LuceneRepository(directory: Directory) extends Repository:
       doc.add(new StoredField("name", qmfObject.name))
       doc.add(new StoredField("type", qmfObject.typ))
       doc.add(new TextField("appldata", qmfObject.applData, Field.Store.YES))
+      doc.add(new TextField("remarks", qmfObject.remarks, Field.Store.YES))
       w.addDocument(doc)
       w.commit()
       ()
