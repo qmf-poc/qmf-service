@@ -19,7 +19,7 @@ class BrokerLive(outgoingQueue: Queue[OutgoingMessage], repository: Repository) 
         } yield ()
 
   override def take: UIO[OutgoingMessage] =
-    outgoingQueue.take.tap(m => ZIO.logDebug(s"outgoind message took $m"))
+    outgoingQueue.take.tap(m => ZIO.logDebug(s"outgoing message took $m"))
 
   override def put(message: OutgoingMessage): UIO[Unit] =
     outgoingQueue.offer(message).flatMap(result => ZIO.logDebug(s"outgoing message $message offered $message"))

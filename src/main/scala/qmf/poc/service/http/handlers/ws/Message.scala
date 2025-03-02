@@ -19,6 +19,9 @@ case class ReplyPong(payload: String) extends OutgoingMessage:
 case class RequestSnapshot(user: String, password: String) extends OutgoingMessage:
   override val jsonrpc: String =
     s"""{"jsonrpc": "2.0", "method": "requestSnapshot", "params": {"user": "$user", "password": "$password"}}"""
+    
+object RequestSnapshot:
+  val default: RequestSnapshot = RequestSnapshot("db2inst1", "password")
 
 trait IncomingMessage
 

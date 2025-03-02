@@ -2,9 +2,12 @@ package qmf.poc.service.http.handlers.ws
 
 import qmf.poc.service.http.handlers.ws.IncomingMessage.given
 import zio.http.ChannelEvent.Read
+import zio.http.ChannelEvent.UserEvent.HandshakeComplete
 import zio.http.{ChannelEvent, Handler, WebSocketApp, WebSocketFrame}
 import zio.json.given
 import zio.{Ref, ZIO}
+
+import scala.language.postfixOps
 
 def handleIncomingMessage(frameAccumulator: Ref[Array[Byte]], broker: Broker) =
   frameAccumulator
@@ -20,16 +23,19 @@ def handleIncomingMessage(frameAccumulator: Ref[Array[Byte]], broker: Broker) =
 
 def agentWebsocketApp: WebSocketApp[Broker] =
   Handler.webSocket { channel =>
-    for
+    for {
       // listen for outgoing messages
       broker <- ZIO.service[Broker]
-      _ <- broker.take
-        .flatMap { message =>
-          channel.send(Read(WebSocketFrame.Text(message.jsonrpc))) *> ZIO.logDebug(s"ws ==> $message")
-        }
-        .forever
-        .fork
+      listener <- (for {
+        _ <- ZIO.logDebug(s"ws taking from broker...")
+        message <- broker.take
+        _ <- ZIO.logDebug(s"ws took from broker $message")
+        r <- channel
+          .send(Read(WebSocketFrame.Text(message.jsonrpc)))
+        _ <- ZIO.logDebug(s"ws send result $message")
+      } yield ()).forever.fork.ensuring(ZIO.logDebug("ws broker listener interrupted"))
       frameAccumulator <- Ref.make(Array[Byte]())
+      _ <- ZIO.logDebug(s"ws channel.receiveAll")
       // listen for incoming messages
       _ <- channel.receiveAll {
         case ChannelEvent.Read(message) =>
@@ -54,14 +60,22 @@ def agentWebsocketApp: WebSocketApp[Broker] =
                 _ <- frameAccumulator.update(_ ++ frame.buffer)
                 _ <- ZIO.when(frame.isFinal)(handleIncomingMessage(frameAccumulator, broker))
               yield ()
+            case _ =>
+              ZIO.logDebug("Unknown")
         case ChannelEvent.ExceptionCaught(cause) =>
           ZIO.logError(s"ws <== $cause")
         case ChannelEvent.UserEventTriggered(event) =>
-          ZIO.logDebug(s"ws <== $event")
+          (event match
+            case HandshakeComplete => broker.put(RequestSnapshot.default)
+            case _ => ZIO.unit).as(ZIO.logDebug(s"ws <== UserEventTriggered $event"))
         case ChannelEvent.Registered =>
           ZIO.logDebug("ws <== Registered")
         case ChannelEvent.Unregistered =>
           ZIO.logDebug("ws <== Unregistered")
+        case null =>
+          ZIO.logDebug("ws <== Null")
       }
-    yield ()
+      _ <- listener.interrupt
+      _ <- ZIO.logDebug("exit channel")
+    } yield ()
   }

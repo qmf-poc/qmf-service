@@ -38,7 +38,7 @@ object Main extends ZIOAppDefault:
     val program = for
       (httpStarted, shutdownSignal) <- server
       _ <- httpStarted.await
-      _ <- printLine("Server started")
+      _ <- printLine("Server started 8081")
       _ <- ctrlC
       _ <- ZIO.never // TODO: should be clean up
     yield ()
