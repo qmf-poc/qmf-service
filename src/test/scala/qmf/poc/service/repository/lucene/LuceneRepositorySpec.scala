@@ -12,15 +12,15 @@ import zio.test.{Assertion, Spec, ZIOSpecDefault, assert, assertCompletes, asser
 import java.nio.charset.Charset
 
 object LuceneRepositoryFixtures:
-  val snapshot1 = CatalogSnapshot(
-    Seq(ObjectData("owner1", "name1", "type1", 1, "appldata1".toEBCDIC.getBytes)),
+  val snapshot1: CatalogSnapshot = CatalogSnapshot(
+    Seq(ObjectData("owner1", "name1", "type1", 1, "appldata1".toEBCDIC)),
     Seq(ObjectRemarks("owner1", "name1", "type1", "remark1")),
     Seq(ObjectDirectory("owner1", "name1", "type1", "subtype1", 1, "", "", "", "", ""))
   )
-  val snapshot2 = CatalogSnapshot(
+  val snapshot2: CatalogSnapshot = CatalogSnapshot(
     Seq(
-      ObjectData("owner1", "name1", "type1", 1, "appldata1".toEBCDIC.getBytes),
-      ObjectData("owner2", "name2", "type2", 1, "appldata2".toEBCDIC.getBytes)
+      ObjectData("owner1", "name1", "type1", 1, "appldata1".toEBCDIC),
+      ObjectData("owner2", "name2", "type2", 1, "appldata2".toEBCDIC)
     ),
     Seq(
       ObjectRemarks("owner1", "name1", "type1", "remark1"),
@@ -31,11 +31,11 @@ object LuceneRepositoryFixtures:
       ObjectDirectory("owner2", "name2", "type2", "subtype2", 1, "", "", "", "", "")
     )
   )
-  val snapshot3 = CatalogSnapshot(
+  val snapshot3: CatalogSnapshot = CatalogSnapshot(
     Seq(
-      ObjectData("1owner1", "1name1", "1type1", 1, "1appldata1".toEBCDIC.getBytes),
-      ObjectData("2owner2", "2name2", "2type2", 1, "2appldata2".toEBCDIC.getBytes),
-      ObjectData("3owner3", "3name3", "3type3", 1, "3appldata3".toEBCDIC.getBytes)
+      ObjectData("1owner1", "1name1", "1type1", 1, "1appldata1".toEBCDIC),
+      ObjectData("2owner2", "2name2", "2type2", 1, "2appldata2".toEBCDIC),
+      ObjectData("3owner3", "3name3", "3type3", 1, "3appldata3".toEBCDIC)
     ),
     Seq(
       ObjectRemarks("1owner1", "1name1", "1type1", "1remark1"),
@@ -48,11 +48,11 @@ object LuceneRepositoryFixtures:
       ObjectDirectory("3owner3", "3name3", "3type3", "3subtype3", 1, "", "", "", "", "")
     )
   )
-  val snapshot3with2commonOwners = CatalogSnapshot(
+  val snapshot3with2commonOwners: CatalogSnapshot = CatalogSnapshot(
     Seq(
-      ObjectData("1owner1", "1name1", "1type1", 1, "1appldata1".toEBCDIC.getBytes),
-      ObjectData("2owner2", "2name2", "2type2", 1, "2appldata2".toEBCDIC.getBytes),
-      ObjectData("3other3", "3name3", "3type3", 1, "3appldata3".toEBCDIC.getBytes)
+      ObjectData("1owner1", "1name1", "1type1", 1, "1appldata1".toEBCDIC),
+      ObjectData("2owner2", "2name2", "2type2", 1, "2appldata2".toEBCDIC),
+      ObjectData("3other3", "3name3", "3type3", 1, "3appldata3".toEBCDIC)
     ),
     Seq(
       ObjectRemarks("1owner1", "1name1", "1type1", "1remark1"),
@@ -66,11 +66,19 @@ object LuceneRepositoryFixtures:
     )
   )
 
-  extension (s: String) def toEBCDIC: String = new String(s.getBytes, Charset.forName("IBM1047"))
+  extension (s: String) def toEBCDIC: Array[Byte] = s.getBytes(Charset.forName("IBM1047"))
 
 import qmf.poc.service.repository.lucene.LuceneRepositoryFixtures.{snapshot1, snapshot2, snapshot3, snapshot3with2commonOwners}
 object LuceneRepositorySpec extends ZIOSpecDefault:
   def spec: Spec[Any, RepositoryError] = suite("LuceneRepository test")(
+    suite("encoding")(
+      test("appldata comparable with UTF-8") {
+        val odValue = snapshot3.objectData.head
+        val orValue = snapshot3.objectRemarks.head
+        val doc = QMFObject(odValue.owner, orValue.name, orValue.`type`, orValue.remarks, odValue.appldata)
+        assert(doc.applData)(Assertion.equalTo("1appldata1"))
+      }
+    ),
     suite("persisting")(
       test("should persist a document without error") {
         // Arrange
@@ -155,12 +163,12 @@ object LuceneRepositorySpec extends ZIOSpecDefault:
                 hasField("owner", r => r.owner, equalTo("2owner2"))
             ) &&
             hasAt(2)(
-            hasField[QMFObject, String]("owner", r => r.owner, equalTo("3other3")) &&
-              hasField("typ", r => r.typ, equalTo("3type3")) &&
-              hasField("name", r => r.name, equalTo("3name3")) &&
-              hasField("appldata", r => r.applData, equalTo(snapshot3with2commonOwners.objectData(2).appldata.toUTF8)) &&
-              hasField("owner", r => r.owner, equalTo("3other3"))
-          )
+              hasField[QMFObject, String]("owner", r => r.owner, equalTo("3other3")) &&
+                hasField("typ", r => r.typ, equalTo("3type3")) &&
+                hasField("name", r => r.name, equalTo("3name3")) &&
+                hasField("appldata", r => r.applData, equalTo(snapshot3with2commonOwners.objectData(2).appldata.toUTF8)) &&
+                hasField("owner", r => r.owner, equalTo("3other3"))
+            )
         )
       },
       test("should find all documents with short query string") {
@@ -234,5 +242,173 @@ object LuceneRepositorySpec extends ZIOSpecDefault:
         // Assert
         assertZIO(result)(Assertion.equalTo(Seq()))
       }
-    )
+    ),
+    test("should find a document by remark") {
+      // Arrange
+      val luceneRepository = LuceneRepository(new ByteBuffersDirectory())
+      // Act
+      val result = for {
+        _ <- luceneRepository.load(snapshot3with2commonOwners)
+        v <- luceneRepository.retrieve("remarks:1remark1")
+      } yield v
+      // Assert
+      assertZIO(result)(
+        hasField[Seq[QMFObject], Int]("length", r => r.length, equalTo(1)) &&
+          hasAt(0)(
+            hasField[QMFObject, String]("owner", r => r.owner, equalTo("1owner1")) &&
+              hasField("typ", r => r.typ, equalTo("1type1")) &&
+              hasField("name", r => r.name, equalTo("1name1")) &&
+              hasField("remarks", r => r.remarks, equalTo("1remark1")) &&
+              hasField("appldata", r => r.applData, equalTo(snapshot3.objectData.head.appldata.toUTF8)) &&
+              hasField("owner", r => r.owner, equalTo("1owner1"))
+          )
+      )
+    },
+    test("should find a document by remark's prefix") {
+      // Arrange
+      val luceneRepository = LuceneRepository(new ByteBuffersDirectory())
+      // Act
+      val result = for {
+        _ <- luceneRepository.load(snapshot3with2commonOwners)
+        v <- luceneRepository.retrieve("remarks:1remark*")
+      } yield v
+      // Assert
+      assertZIO(result)(
+        hasField[Seq[QMFObject], Int]("length", r => r.length, equalTo(1)) &&
+          hasAt(0)(
+            hasField[QMFObject, String]("owner", r => r.owner, equalTo("1owner1")) &&
+              hasField("typ", r => r.typ, equalTo("1type1")) &&
+              hasField("name", r => r.name, equalTo("1name1")) &&
+              hasField("remarks", r => r.remarks, equalTo("1remark1")) &&
+              hasField("appldata", r => r.applData, equalTo(snapshot3.objectData.head.appldata.toUTF8)) &&
+              hasField("owner", r => r.owner, equalTo("1owner1"))
+          )
+      )
+    },
+    test("should find a document by remark's suffix") {
+      // Arrange
+      val luceneRepository = LuceneRepository(new ByteBuffersDirectory())
+      // Act
+      val result = for {
+        _ <- luceneRepository.load(snapshot3with2commonOwners)
+        v <- luceneRepository.retrieve("remarks:*remark1")
+      } yield v
+      // Assert
+      assertZIO(result)(
+        hasField[Seq[QMFObject], Int]("length", r => r.length, equalTo(1)) &&
+          hasAt(0)(
+            hasField[QMFObject, String]("owner", r => r.owner, equalTo("1owner1")) &&
+              hasField("typ", r => r.typ, equalTo("1type1")) &&
+              hasField("name", r => r.name, equalTo("1name1")) &&
+              hasField("remarks", r => r.remarks, equalTo("1remark1")) &&
+              hasField("appldata", r => r.applData, equalTo(snapshot3.objectData.head.appldata.toUTF8)) &&
+              hasField("owner", r => r.owner, equalTo("1owner1"))
+          )
+      )
+    },
+    test("should find a document by remark's part") {
+      // Arrange
+      val luceneRepository = LuceneRepository(new ByteBuffersDirectory())
+      // Act
+      val result = for {
+        _ <- luceneRepository.load(snapshot3with2commonOwners)
+        v <- luceneRepository.retrieve("remarks:*remark*")
+      } yield v
+      // Assert
+      assertZIO(result)(
+        hasField[Seq[QMFObject], Int]("length", r => r.length, equalTo(3)) &&
+          hasAt(0)(
+            hasField[QMFObject, String]("owner", r => r.owner, equalTo("1owner1")) &&
+              hasField("typ", r => r.typ, equalTo("1type1")) &&
+              hasField("name", r => r.name, equalTo("1name1")) &&
+              hasField("remarks", r => r.remarks, equalTo("1remark1")) &&
+              hasField("appldata", r => r.applData, equalTo(snapshot3.objectData.head.appldata.toUTF8)) &&
+              hasField("owner", r => r.owner, equalTo("1owner1"))
+          )
+      )
+    },
+    test("should find a document by appldata") {
+      // Arrange
+      val luceneRepository = LuceneRepository(new ByteBuffersDirectory())
+      // Act
+      val result = for {
+        _ <- luceneRepository.load(snapshot3with2commonOwners)
+        v <- luceneRepository.retrieve("appldata:1appldata1")
+      } yield v
+      // Assert
+      assertZIO(result)(
+        hasField[Seq[QMFObject], Int]("length", r => r.length, equalTo(1)) &&
+          hasAt(0)(
+            hasField[QMFObject, String]("owner", r => r.owner, equalTo("1owner1")) &&
+              hasField("typ", r => r.typ, equalTo("1type1")) &&
+              hasField("name", r => r.name, equalTo("1name1")) &&
+              hasField("remarks", r => r.remarks, equalTo("1remark1")) &&
+              hasField("appldata", r => r.applData, equalTo(snapshot3.objectData.head.appldata.toUTF8)) &&
+              hasField("owner", r => r.owner, equalTo("1owner1"))
+          )
+      )
+    },
+    test("should find a document by appldata's prefix") {
+      // Arrange
+      val luceneRepository = LuceneRepository(new ByteBuffersDirectory())
+      // Act
+      val result = for {
+        _ <- luceneRepository.load(snapshot3with2commonOwners)
+        v <- luceneRepository.retrieve("appldata:1appldata*")
+      } yield v
+      // Assert
+      assertZIO(result)(
+        hasField[Seq[QMFObject], Int]("length", r => r.length, equalTo(1)) &&
+          hasAt(0)(
+            hasField[QMFObject, String]("owner", r => r.owner, equalTo("1owner1")) &&
+              hasField("typ", r => r.typ, equalTo("1type1")) &&
+              hasField("name", r => r.name, equalTo("1name1")) &&
+              hasField("remarks", r => r.remarks, equalTo("1remark1")) &&
+              hasField("appldata", r => r.applData, equalTo(snapshot3.objectData.head.appldata.toUTF8)) &&
+              hasField("owner", r => r.owner, equalTo("1owner1"))
+          )
+      )
+    },
+    test("should find a document by appldata's suffix") {
+      // Arrange
+      val luceneRepository = LuceneRepository(new ByteBuffersDirectory())
+      // Act
+      val result = for {
+        _ <- luceneRepository.load(snapshot3with2commonOwners)
+        v <- luceneRepository.retrieve("appldata:*appldata1")
+      } yield v
+      // Assert
+      assertZIO(result)(
+        hasField[Seq[QMFObject], Int]("length", r => r.length, equalTo(1)) &&
+          hasAt(0)(
+            hasField[QMFObject, String]("owner", r => r.owner, equalTo("1owner1")) &&
+              hasField("typ", r => r.typ, equalTo("1type1")) &&
+              hasField("name", r => r.name, equalTo("1name1")) &&
+              hasField("remarks", r => r.remarks, equalTo("1remark1")) &&
+              hasField("appldata", r => r.applData, equalTo(snapshot3.objectData.head.appldata.toUTF8)) &&
+              hasField("owner", r => r.owner, equalTo("1owner1"))
+          )
+      )
+    },
+    test("should find a document by appldata's part") {
+      // Arrange
+      val luceneRepository = LuceneRepository(new ByteBuffersDirectory())
+      // Act
+      val result = for {
+        _ <- luceneRepository.load(snapshot3with2commonOwners)
+        v <- luceneRepository.retrieve("appldata:*appldata*")
+      } yield v
+      // Assert
+      assertZIO(result)(
+        hasField[Seq[QMFObject], Int]("length", r => r.length, equalTo(3)) &&
+          hasAt(0)(
+            hasField[QMFObject, String]("owner", r => r.owner, equalTo("1owner1")) &&
+              hasField("typ", r => r.typ, equalTo("1type1")) &&
+              hasField("name", r => r.name, equalTo("1name1")) &&
+              hasField("remarks", r => r.remarks, equalTo("1remark1")) &&
+              hasField("appldata", r => r.applData, equalTo(snapshot3.objectData.head.appldata.toUTF8)) &&
+              hasField("owner", r => r.owner, equalTo("1owner1"))
+          )
+      )
+    }
   )

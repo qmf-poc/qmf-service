@@ -89,7 +89,9 @@ class LuceneRepository(directory: Directory) extends Repository:
       val query =
         if (queryString.length <= 2)
           new MatchAllDocsQuery()
-        else {
+        else if (queryString.contains(':')) {
+            queryParser.parse(queryString)
+        } else {
           queryParser.parse(s"*$queryString*")
         }
       val results = s.search(query, Int.MaxValue)
