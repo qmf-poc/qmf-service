@@ -1,6 +1,6 @@
 import sbt.Keys.libraryDependencies
 
-scalaVersion := "3.6.3"
+scalaVersion := "3.6.4"
 version := "0.1.0-SNAPSHOT"
 organization := "qmf.poc.service"
 organizationName := "qmf"
@@ -14,9 +14,9 @@ javacOptions ++= Seq("-source", "1.8", "-target", "1.8")
 scalacOptions ++= Seq("-java-output-version", "8")
 
 assemblyMergeStrategy in assembly := {
-  case "module-info.class" => MergeStrategy.discard
+  case "module-info.class"                     => MergeStrategy.discard
   case "META-INF/io.netty.versions.properties" => MergeStrategy.discard
-  case x => (assemblyMergeStrategy in assembly).value(x)
+  case x                                       => (assemblyMergeStrategy in assembly).value(x)
 }
 
 lazy val root = (project in file("."))
@@ -32,5 +32,5 @@ lazy val root = (project in file("."))
       "org.apache.lucene" % "lucene-queryparser" % luceneVersion,
       "dev.zio" %% "zio-test" % zioVersion % Test,
       "org.scalameta" %% "munit" % "1.0.4" % Test
-    ),
+    )
   )

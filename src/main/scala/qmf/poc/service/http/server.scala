@@ -1,6 +1,6 @@
 package qmf.poc.service.http
 
-import qmf.poc.service.http.handlers.rest.{ping, retrieve}
+import qmf.poc.service.http.handlers.rest.{ping, query, get}
 import qmf.poc.service.http.handlers.ws.{Broker, RequestSnapshot, agentWebsocketApp}
 import qmf.poc.service.repository.Repository
 import zio.http.Method.GET
@@ -20,7 +20,10 @@ def routes(broker: Broker, repository: Repository) =
     GET / "catalog" ->
       handler((_: Request) => broker.put(RequestSnapshot.default).ignore.as(Response.text("Refresh requested"))),
     GET / "agent" -> handler(agentWebsocketApp.toResponse),
-    GET / "retrieve" -> handler(retrieve(repository))
+    GET / "retrieve" -> handler(query(repository)),
+    GET / "query" -> handler(query(repository)),
+    GET / "get" -> handler(get(repository)),
+    GET / "object" -> handler(query(repository))
   ) @@ cors(config) @@ Middleware.debug
 
 def server: ZIO[Broker & Server & Repository, Throwable, (Promise[Nothing, Unit], Promise[Nothing, Unit])] =

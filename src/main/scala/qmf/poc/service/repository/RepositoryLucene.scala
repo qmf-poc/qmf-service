@@ -2,17 +2,30 @@ package qmf.poc.service.repository
 
 import org.apache.lucene.analysis.standard.StandardAnalyzer
 import org.apache.lucene.document.*
-import org.apache.lucene.index.{DirectoryReader, IndexNotFoundException, IndexWriter, IndexWriterConfig}
+import org.apache.lucene.index.*
 import org.apache.lucene.queryparser.classic.QueryParser
-import org.apache.lucene.search.{IndexSearcher, MatchAllDocsQuery}
+import org.apache.lucene.search.{IndexSearcher, MatchAllDocsQuery, TopDocs}
 import org.apache.lucene.store.{ByteBuffersDirectory, Directory}
 import qmf.poc.service.catalog.{CatalogSnapshot, ObjectData, ObjectDirectory, ObjectRemarks}
 import qmf.poc.service.repository.*
-import zio.{CanFail, FiberRef, IO, Task, ULayer, ZIO, ZLayer}
+import qmf.poc.service.repository.LuceneRepository.topDocs2Objects
+import zio.{CanFail, FiberRef, IO, ULayer, ZIO, ZLayer}
 
 type LuceneId = Int
 
-class RepositoryError(th: Throwable) extends Exception(th.getMessage, th)
+sealed trait RepositoryError:
+  def message: String
+
+class RepositoryErrorObjectNotFound(id: String) extends RepositoryError:
+  def message: String = s"Object id=$id not found"
+
+class RepositoryErrorThrowable(th: Throwable) extends Exception(th.getMessage, th) with RepositoryError:
+  def message: String = th.getMessage
+
+given Conversion[RepositoryError, Throwable] with
+  def apply(error: RepositoryError): Throwable = error match
+    case e: Throwable                     => e
+    case e: RepositoryErrorObjectNotFound => Exception(e.message)
 
 private class CatalogSnapshotItem(val data: ObjectData, val directory: ObjectDirectory, val remarks: ObjectRemarks)
 
@@ -47,7 +60,7 @@ class LuceneRepository(directory: Directory) extends Repository:
         // initializeIndex()
       }
       .onError(cause => ZIO.logErrorCause(cause))
-      .mapError(th => RepositoryError(th))
+      .mapError(th => RepositoryErrorThrowable(th))
     data = snapshot.objectData.map { d => (s"${d.owner}?${d.name}?${d.`type`}", d) }.toMap
     remarks = snapshot.objectRemarks.map { d => (s"${d.owner}?${d.name}?${d.`type`}", d) }.toMap
     directories = snapshot.objectDirectories.map { d => (s"${d.owner}?${d.name}?${d.`type`}", d) }.toMap
@@ -76,11 +89,7 @@ class LuceneRepository(directory: Directory) extends Repository:
     _ <- ZIO.logDebug(s"persist: $qmfObject")
   yield ()
 
-  // TODO: currently the most simple search: "any substring of all fields"
-  //      improvements:
-  //      - detect * and ? in the query string and use WildcardQuery
-  //      - detect : in the query string and limit the search to the field before the :
-  def retrieve(queryString: String): IO[RepositoryError, Seq[QMFObject]] = ZIO
+  def query(queryString: String): IO[RepositoryError, Seq[QMFObject]] = ZIO
     .attemptBlocking {
       // TODO: IndexSearcher should be memoized
       val s = new IndexSearcher(r)
@@ -90,32 +99,24 @@ class LuceneRepository(directory: Directory) extends Repository:
         if (queryString.length <= 2)
           new MatchAllDocsQuery()
         else if (queryString.contains(':')) {
-            queryParser.parse(queryString)
+          queryParser.parse(queryString)
         } else {
           queryParser.parse(s"*$queryString*")
         }
       val results = s.search(query, Int.MaxValue)
       val storedFields = s.storedFields()
-      val hits = results.scoreDocs
-      hits
-        .map(hit => {
-          val doc = storedFields.document(hit.doc)
-          val owner = doc.get("owner")
-          val name = doc.get("name")
-          val typ = doc.get("type")
-          val remarks = doc.get("remarks")
-          val appldata = doc.get("appldata")
-          QMFObject(owner, name, typ, remarks, appldata)
-        })
-        .toSeq
+      topDocs2Objects(results, storedFields).toSeq
     }
     .catchSome { case _: IndexNotFoundException =>
       ZIO.succeed(Seq())
     }
-    .mapError(th => RepositoryError(th))
+    .mapError(th => RepositoryErrorThrowable(th))
 
-  private inline def luceneId(a: Any): LuceneId =
-    a.hashCode()
+  private inline def luceneId(s: String): LuceneId =
+    s.hashCode
+
+  private inline def luceneId(o: QMFObject): LuceneId =
+    luceneId(o.id)
 
   private def has(id: LuceneId): IO[RepositoryError, Boolean] = ZIO
     .attempt {
@@ -127,12 +128,31 @@ class LuceneRepository(directory: Directory) extends Repository:
     .catchSome { case _: IndexNotFoundException =>
       ZIO.succeed(false)
     }
-    .mapError(th => RepositoryError(th))
+    .mapError(th => RepositoryErrorThrowable(th))
+
+  def get(id: String): IO[RepositoryError, QMFObject] =
+    ZIO
+      .attempt {
+        val query = IntPoint.newExactQuery("ObjectId", luceneId(id))
+        val s = new IndexSearcher(r)
+        val results = s.search(query, 1)
+        topDocs2Objects(results, s.storedFields())
+      }
+      .catchSome { case _: IndexNotFoundException =>
+        ZIO.succeed(Array[QMFObject]())
+      }
+      .mapError(th => RepositoryErrorThrowable(th))
+      .flatMap { objects =>
+        objects.headOption match {
+          case Some(firstObject) => ZIO.succeed(firstObject)
+          case None              => ZIO.fail(RepositoryErrorObjectNotFound(id))
+        }
+      }
 
   private def add(qmfObject: QMFObject): IO[RepositoryError, Unit] = ZIO
     .attempt {
       val doc = new Document()
-      doc.add(new IntPoint("id", luceneId(qmfObject)))
+      doc.add(new IntPoint("ObjectId", luceneId(qmfObject)))
       val record = qmfObject.name + " " + qmfObject.typ + " " + qmfObject.owner
       doc.add(new TextField("record", record, Field.Store.YES))
       doc.add(new StoredField("owner", qmfObject.owner))
@@ -144,9 +164,22 @@ class LuceneRepository(directory: Directory) extends Repository:
       w.commit()
       ()
     }
-    .mapError(th => RepositoryError(th))
+    .mapError(th => RepositoryErrorThrowable(th))
 
 object LuceneRepository:
   def apply(directory: Directory = new ByteBuffersDirectory()) = new LuceneRepository(directory: Directory)
 
   val layer: ULayer[Repository] = ZLayer.succeed(LuceneRepository())
+
+  private def topDocs2Objects(topDocs: TopDocs, storedFields: StoredFields): Array[QMFObject] =
+    val hits = topDocs.scoreDocs
+    hits
+      .map(hit => {
+        val doc = storedFields.document(hit.doc)
+        val owner = doc.get("owner")
+        val name = doc.get("name")
+        val typ = doc.get("type")
+        val remarks = doc.get("remarks")
+        val appldata = doc.get("appldata")
+        QMFObject(owner, name, typ, remarks, appldata)
+      })

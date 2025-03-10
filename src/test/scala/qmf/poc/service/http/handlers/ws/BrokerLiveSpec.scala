@@ -13,7 +13,9 @@ object Mock:
 
     def persist(qmfObject: QMFObject): IO[RepositoryError, Unit] = ???
 
-    def retrieve(queryString: String): IO[RepositoryError, Seq[QMFObject]] = ???
+    def query(queryString: String): IO[RepositoryError, Seq[QMFObject]] = ???
+
+    override def get(id: String): IO[RepositoryError, QMFObject] = ???
 
   val repositoryLayer: ULayer[Repository] = ZLayer.fromFunction(() => repositoryLive)
   val brokerQueueLayer: ULayer[Queue[OutgoingMessage]] = ZLayer(Queue.sliding[OutgoingMessage](100))

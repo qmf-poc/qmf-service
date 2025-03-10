@@ -4,10 +4,10 @@ import org.apache.lucene.store.ByteBuffersDirectory
 import qmf.poc.service.catalog.{CatalogSnapshot, ObjectData, ObjectDirectory, ObjectRemarks}
 import qmf.poc.service.repository.QMFObject.toUTF8
 import qmf.poc.service.repository.lucene.LuceneRepositorySpec.test
-import qmf.poc.service.repository.{LuceneRepository, QMFObject, RepositoryError}
-import zio.ZIO
-import zio.test.Assertion.{equalTo, hasAt, hasField}
-import zio.test.{Assertion, Spec, ZIOSpecDefault, assert, assertCompletes, assertZIO}
+import qmf.poc.service.repository.{LuceneRepository, QMFObject, RepositoryError, RepositoryErrorObjectNotFound}
+import zio.{Exit, ZIO}
+import zio.test.Assertion.{anything, equalTo, fails, hasAt, hasField, isSubtype}
+import zio.test.{Assertion, Spec, ZIOSpecDefault, assert, assertCompletes, assertTrue, assertZIO}
 
 import java.nio.charset.Charset
 
@@ -116,7 +116,7 @@ object LuceneRepositorySpec extends ZIOSpecDefault:
         // Act
         val result = for {
           _ <- luceneRepository.load(snapshot2)
-          v <- luceneRepository.retrieve("")
+          v <- luceneRepository.query("")
         } yield v
         // Assert
         assertZIO(result)(
@@ -143,7 +143,7 @@ object LuceneRepositorySpec extends ZIOSpecDefault:
         // Act
         val result = for {
           _ <- luceneRepository.load(snapshot3with2commonOwners)
-          v <- luceneRepository.retrieve("")
+          v <- luceneRepository.query("")
         } yield v
         // Assert
         assertZIO(result)(
@@ -177,7 +177,7 @@ object LuceneRepositorySpec extends ZIOSpecDefault:
         // Act
         val result = for {
           _ <- luceneRepository.load(snapshot3)
-          v <- luceneRepository.retrieve("o")
+          v <- luceneRepository.query("o")
         } yield v
         // Assert
         assertZIO(result)(
@@ -210,7 +210,7 @@ object LuceneRepositorySpec extends ZIOSpecDefault:
         // Act
         val result = for {
           _ <- luceneRepository.load(snapshot3with2commonOwners)
-          v <- luceneRepository.retrieve("own")
+          v <- luceneRepository.query("own")
         } yield v
         // Assert
         assertZIO(result)(
@@ -237,7 +237,7 @@ object LuceneRepositorySpec extends ZIOSpecDefault:
         // Act
         val result = for {
           _ <- luceneRepository.load(snapshot3with2commonOwners)
-          v <- luceneRepository.retrieve("xyz")
+          v <- luceneRepository.query("xyz")
         } yield v
         // Assert
         assertZIO(result)(Assertion.equalTo(Seq()))
@@ -249,7 +249,7 @@ object LuceneRepositorySpec extends ZIOSpecDefault:
       // Act
       val result = for {
         _ <- luceneRepository.load(snapshot3with2commonOwners)
-        v <- luceneRepository.retrieve("remarks:1remark1")
+        v <- luceneRepository.query("remarks:1remark1")
       } yield v
       // Assert
       assertZIO(result)(
@@ -270,7 +270,7 @@ object LuceneRepositorySpec extends ZIOSpecDefault:
       // Act
       val result = for {
         _ <- luceneRepository.load(snapshot3with2commonOwners)
-        v <- luceneRepository.retrieve("remarks:1remark*")
+        v <- luceneRepository.query("remarks:1remark*")
       } yield v
       // Assert
       assertZIO(result)(
@@ -291,7 +291,7 @@ object LuceneRepositorySpec extends ZIOSpecDefault:
       // Act
       val result = for {
         _ <- luceneRepository.load(snapshot3with2commonOwners)
-        v <- luceneRepository.retrieve("remarks:*remark1")
+        v <- luceneRepository.query("remarks:*remark1")
       } yield v
       // Assert
       assertZIO(result)(
@@ -312,7 +312,7 @@ object LuceneRepositorySpec extends ZIOSpecDefault:
       // Act
       val result = for {
         _ <- luceneRepository.load(snapshot3with2commonOwners)
-        v <- luceneRepository.retrieve("remarks:*remark*")
+        v <- luceneRepository.query("remarks:*remark*")
       } yield v
       // Assert
       assertZIO(result)(
@@ -333,7 +333,7 @@ object LuceneRepositorySpec extends ZIOSpecDefault:
       // Act
       val result = for {
         _ <- luceneRepository.load(snapshot3with2commonOwners)
-        v <- luceneRepository.retrieve("appldata:1appldata1")
+        v <- luceneRepository.query("appldata:1appldata1")
       } yield v
       // Assert
       assertZIO(result)(
@@ -354,7 +354,7 @@ object LuceneRepositorySpec extends ZIOSpecDefault:
       // Act
       val result = for {
         _ <- luceneRepository.load(snapshot3with2commonOwners)
-        v <- luceneRepository.retrieve("appldata:1appldata*")
+        v <- luceneRepository.query("appldata:1appldata*")
       } yield v
       // Assert
       assertZIO(result)(
@@ -375,7 +375,7 @@ object LuceneRepositorySpec extends ZIOSpecDefault:
       // Act
       val result = for {
         _ <- luceneRepository.load(snapshot3with2commonOwners)
-        v <- luceneRepository.retrieve("appldata:*appldata1")
+        v <- luceneRepository.query("appldata:*appldata1")
       } yield v
       // Assert
       assertZIO(result)(
@@ -396,7 +396,7 @@ object LuceneRepositorySpec extends ZIOSpecDefault:
       // Act
       val result = for {
         _ <- luceneRepository.load(snapshot3with2commonOwners)
-        v <- luceneRepository.retrieve("appldata:*appldata*")
+        v <- luceneRepository.query("appldata:*appldata*")
       } yield v
       // Assert
       assertZIO(result)(
@@ -410,5 +410,31 @@ object LuceneRepositorySpec extends ZIOSpecDefault:
               hasField("owner", r => r.owner, equalTo("1owner1"))
           )
       )
+    },
+    test("should find a document by its id") {
+      // Arrange
+      val luceneRepository = LuceneRepository(new ByteBuffersDirectory())
+      // Act
+      val result = for {
+        _ <- luceneRepository.load(snapshot3with2commonOwners)
+        v <- luceneRepository.get("1owner1-1name1-1type1")
+      } yield v
+      // Assert
+      assertZIO(result)(
+        hasField[QMFObject, String]("owner", r => r.owner, equalTo("1owner1")) &&
+          hasField("typ", r => r.typ, equalTo("1type1")) &&
+          hasField("name", r => r.name, equalTo("1name1")) &&
+          hasField("remarks", r => r.remarks, equalTo("1remark1")) &&
+          hasField("appldata", r => r.applData, equalTo(snapshot3.objectData.head.appldata.toUTF8))
+      )
+    },
+    test("should not find a document by wrong id") {
+      // Arrange
+      val luceneRepository = LuceneRepository(new ByteBuffersDirectory())
+      // Act
+      for {
+        _ <- luceneRepository.load(snapshot3with2commonOwners)
+        exit <- luceneRepository.get("1owner1+1name1+1type1").exit
+      } yield assert(exit)(fails(isSubtype[RepositoryErrorObjectNotFound](anything)))
     }
   )

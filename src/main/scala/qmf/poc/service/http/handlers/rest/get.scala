@@ -5,10 +5,10 @@ import zio.ZIO
 import zio.http.{Request, Response, Status}
 import zio.json.EncoderOps
 
-def query(repository: Repository): Request => ZIO[Any, Nothing, Response] = (request: Request) =>
-  val searchParam = request.url.queryParams("search").headOption.getOrElse("*")
+def get(repository: Repository): Request => ZIO[Any, Nothing, Response] = (request: Request) =>
+  val searchParam = request.url.queryParams("id").headOption.getOrElse("null")
   repository
-    .query(searchParam)
+    .get(searchParam)
     .map { result =>
       Response.json(result.toJson)
     }

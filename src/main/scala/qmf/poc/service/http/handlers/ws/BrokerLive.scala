@@ -1,10 +1,10 @@
 package qmf.poc.service.http.handlers.ws
 
-import qmf.poc.service.repository.Repository
-import zio.{Layer, Queue, Task, UIO, ULayer, URLayer, ZIO, ZLayer}
+import qmf.poc.service.repository.{Repository, RepositoryError}
+import zio.{IO, Layer, Queue, Task, UIO, ULayer, URLayer, ZIO, ZLayer}
 
 class BrokerLive(outgoingQueue: Queue[OutgoingMessage], repository: Repository) extends Broker:
-  override def handle(incoming: IncomingMessage): Task[Unit] =
+  override def handle(incoming: IncomingMessage): IO[RepositoryError, Unit] =
     incoming match
       case Alive(agent) =>
         ZIO.logDebug(s"broker handles alive") *>

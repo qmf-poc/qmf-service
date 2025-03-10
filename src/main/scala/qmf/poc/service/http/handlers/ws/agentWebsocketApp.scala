@@ -9,7 +9,7 @@ import zio.{Ref, ZIO}
 
 import scala.language.postfixOps
 
-def handleIncomingMessage(frameAccumulator: Ref[Array[Byte]], broker: Broker) =
+def handleIncomingMessage(frameAccumulator: Ref[Array[Byte]], broker: Broker): ZIO[Any, Throwable, Unit] =
   frameAccumulator
     .getAndSet(Array[Byte]())
     .flatMap(accumulated =>
@@ -17,7 +17,7 @@ def handleIncomingMessage(frameAccumulator: Ref[Array[Byte]], broker: Broker) =
         .fromJson[IncomingMessage]
         .fold(
           error => ZIO.logWarning(s"Parse error: $error (length: ${accumulated.length})"),
-          message => ZIO.logDebug(s"Send message $message to broker") *> broker.handle(message)
+          message => ZIO.logDebug(s"Send message $message to broker") *> broker.handle(message).mapError(_.asInstanceOf[Throwable])
         )
     )
 
@@ -67,7 +67,8 @@ def agentWebsocketApp: WebSocketApp[Broker] =
         case ChannelEvent.UserEventTriggered(event) =>
           (event match
             case HandshakeComplete => broker.put(RequestSnapshot.default)
-            case _ => ZIO.unit).as(ZIO.logDebug(s"ws <== UserEventTriggered $event"))
+            case _                 => ZIO.unit
+          ).as(ZIO.logDebug(s"ws <== UserEventTriggered $event"))
         case ChannelEvent.Registered =>
           ZIO.logDebug("ws <== Registered")
         case ChannelEvent.Unregistered =>
