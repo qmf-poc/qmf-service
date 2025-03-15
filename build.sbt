@@ -5,9 +5,9 @@ version := "0.1.0-SNAPSHOT"
 organization := "qmf.poc.service"
 organizationName := "qmf"
 
-val zioVersion = "2.1.14"
+val zioVersion = "2.1.16"
 val zioConfigVersion = "4.0.3"
-val zioHttpVersion = "3.0.1"
+val zioHttpVersion = "3.1.0"
 val luceneVersion = "10.1.0"
 
 javacOptions ++= Seq("-source", "1.8", "-target", "1.8")
@@ -27,7 +27,7 @@ lazy val root = (project in file("."))
       "dev.zio" %% "zio" % zioVersion,
       "dev.zio" %% "zio-config" % zioConfigVersion,
       "dev.zio" %% "zio-http" % zioHttpVersion,
-      "dev.zio" %% "zio-json" % "0.7.4",
+      "dev.zio" %% "zio-json" % "0.7.39",
       "org.apache.lucene" % "lucene-core" % luceneVersion,
       "org.apache.lucene" % "lucene-queryparser" % luceneVersion,
       "dev.zio" %% "zio-test" % zioVersion % Test,

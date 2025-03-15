@@ -5,17 +5,19 @@ import zio.ZIO
 import zio.http.{Request, Response, Status}
 import zio.json.EncoderOps
 
-def get(repository: Repository): Request => ZIO[Any, Nothing, Response] = (request: Request) =>
+def get: Request => ZIO[Repository, Nothing, Response] = (request: Request) =>
   val searchParam = request.url.queryParams("id").headOption.getOrElse("null")
-  repository
-    .get(searchParam)
-    .map { result =>
-      Response.json(result.toJson)
-    }
-    .catchAll { error =>
-      ZIO.logError(error.message).as {
-        Response
-          .text(error.message)
-          .status(Status.BadRequest)
+  ZIO.serviceWithZIO[Repository] { repository =>
+    repository
+      .get(searchParam)
+      .flatMap { result =>
+        ZIO.succeed(Response.json(result.toJson))
       }
-    }
+      .catchAll { error =>
+        ZIO.logError(error.message).as {
+          Response
+            .text(error.message)
+            .status(Status.BadRequest)
+        }
+      }
+  }

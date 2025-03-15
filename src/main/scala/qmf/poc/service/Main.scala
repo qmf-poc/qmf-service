@@ -1,7 +1,8 @@
 package qmf.poc.service
 
-import qmf.poc.service.http.handlers.ws.{Broker, BrokerLive, OutgoingMessage, Ping}
+import qmf.poc.service.agent.{Broker, BrokerLive, OutgoingMessage}
 import qmf.poc.service.http.server
+import qmf.poc.service.jsonrpc.JsonRpcOutgoingMessagesStore
 import qmf.poc.service.repository.{LuceneRepository, Repository}
 import zio.*
 import zio.Console.printLine
@@ -23,6 +24,7 @@ object Main extends ZIOAppDefault:
     val repositoryLayer: ULayer[Repository] = LuceneRepository.layer
     val brokerQueueLayer: ULayer[Queue[OutgoingMessage]] = ZLayer(Queue.sliding[OutgoingMessage](100))
     val brokerLayer: ULayer[Broker] = (repositoryLayer ++ brokerQueueLayer) >>> BrokerLive.layer
+    val jsonRpcLayer: ULayer[JsonRpcOutgoingMessagesStore] = ZLayer.succeed(JsonRpcOutgoingMessagesStore.live)
 
     val httpConfigLayer: ULayer[Server.Config] = ZLayer.succeed(
       Server.Config.default
@@ -43,4 +45,4 @@ object Main extends ZIOAppDefault:
       _ <- ZIO.never // TODO: should be clean up
     yield ()
 
-    program.provideSome(repositoryLayer ++ brokerLayer ++ serverLayer)
+    program.provideSome(repositoryLayer ++ brokerLayer ++ serverLayer ++ jsonRpcLayer)
