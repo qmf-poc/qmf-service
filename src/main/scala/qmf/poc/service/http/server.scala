@@ -1,6 +1,6 @@
 package qmf.poc.service.http
 
-import qmf.poc.service.agent.Broker
+import qmf.poc.service.agent.{Broker, OutgoingMessageIdGenerator}
 import qmf.poc.service.agent.MessageJson.given
 import qmf.poc.service.http.handlers.rest.*
 import qmf.poc.service.http.handlers.ws.agentWebsocketApp
@@ -17,10 +17,11 @@ private val config: CorsConfig =
     allowedOrigin = _ => AccessControlAllowOrigin.parse("*").toOption
   )
 
-def routes: Routes[Broker & JsonRpcOutgoingMessagesStore & Repository, Nothing] =
+def routes: Routes[Broker & JsonRpcOutgoingMessagesStore & Repository & OutgoingMessageIdGenerator, Nothing] =
   Routes(
     GET / "ping" -> handler(ping),
     GET / "agent-ping" -> handler(pingAgent),
+    GET / "ping-agent" -> handler(pingAgent),
     GET / "catalog" -> handler(snapshot),
     GET / "agent" -> handler(agentWebsocketApp.toResponse),
     GET / "retrieve" -> handler(query),
@@ -30,7 +31,7 @@ def routes: Routes[Broker & JsonRpcOutgoingMessagesStore & Repository, Nothing] 
   ) @@ cors(config) @@ Middleware.debug
 
 def server: ZIO[
-  Broker & Server & Repository & JsonRpcOutgoingMessagesStore,
+  Broker & Server & Repository & JsonRpcOutgoingMessagesStore & OutgoingMessageIdGenerator,
   Throwable,
   (Promise[Nothing, Unit], Promise[Nothing, Unit])
 ] =

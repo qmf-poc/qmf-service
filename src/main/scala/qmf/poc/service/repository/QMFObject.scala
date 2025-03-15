@@ -3,9 +3,10 @@ package qmf.poc.service.repository
 import zio.json.ast.Json
 import zio.json.{DeriveJsonEncoder, JsonEncoder, given}
 
-case class QMFObject(owner: String, name: String, typ: String, remarks: String, applData: String) {
+case class QMFObject(owner: String, name: String, typ: String, remarks: String, applData: String):
   val id: String = s"$owner-$name-$typ".trim
-}
+
+  override def toString: String = id
 
 object QMFObject:
   def apply(owner: String, name: String, typ: String, remarks: String, applData: Array[Byte]) =

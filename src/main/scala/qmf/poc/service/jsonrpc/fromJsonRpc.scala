@@ -35,16 +35,16 @@ private def handleResult(resultObj: Json, obj: Json.Obj): ZIO[JsonRpcOutgoingMes
           payload <- ZIO.fromOption(resultObj.asString).orElseFail(JsonRPCDecodeError("result is not string"))
           pong <- ZIO.succeed(Pong(payload, ping))
         } yield pong
-      case snapshot: RequestSnapshot =>
+      case requestSnapshot: RequestSnapshot =>
         for {
           catalog <- ZIO.fromEither(resultObj.toJson.fromJson[CatalogSnapshot]).mapError(error => JsonRPCDecodeError(error))
-          snapshot <- ZIO.succeed(Snapshot(catalog))
+          snapshot <- ZIO.succeed(Snapshot(catalog, requestSnapshot))
         } yield snapshot
-      case runResult: RequestRunObject =>
+      case requestRunObject: RequestRunObject =>
         for {
           ro <- ZIO.fromOption(resultObj.asObject).orElseFail(JsonRPCDecodeError("result is not object"))
           body <- ZIO.fromOption(ro.get("body").flatMap(b => b.asString)).orElseFail(JsonRPCDecodeError("result has no body"))
-          result <- ZIO.succeed(RunObjectResult("html", body))
+          result <- ZIO.succeed(RunObjectResult("html", body, requestRunObject))
         } yield result
   } yield message
 

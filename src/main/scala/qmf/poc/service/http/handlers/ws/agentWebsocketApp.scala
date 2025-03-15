@@ -1,6 +1,6 @@
 package qmf.poc.service.http.handlers.ws
 
-import qmf.poc.service.agent.{Broker, OutgoingMessage}
+import qmf.poc.service.agent.{Broker, OutgoingMessage, OutgoingMessageIdGenerator}
 import qmf.poc.service.jsonrpc.{JsonRPCDecodeError, JsonRpcOutgoingMessagesStore, fromJsonRpc, toJsonRpc}
 import qmf.poc.service.repository.RepositoryError
 import zio.http.ChannelEvent.Read
@@ -13,7 +13,7 @@ import scala.language.postfixOps
 def handleIncomingMessage(
     frameAccumulator: Ref[Array[Byte]],
     broker: Broker
-): ZIO[JsonRpcOutgoingMessagesStore, JsonRPCDecodeError | RepositoryError, Unit] =
+): ZIO[JsonRpcOutgoingMessagesStore & OutgoingMessageIdGenerator, JsonRPCDecodeError | RepositoryError, Unit] =
   for {
     accumulated <- frameAccumulator.getAndSet(Array[Byte]())
     message <- fromJsonRpc(String(accumulated, "ASCII")).tapError(error =>
@@ -23,7 +23,9 @@ def handleIncomingMessage(
     r <- broker.handle(message).tapError(error => ZIO.logWarning(s"Handle error: ${error.message}"))
   } yield r
 
-def agentWebsocketApp(using JsonEncoder[OutgoingMessage]): WebSocketApp[Broker & JsonRpcOutgoingMessagesStore] =
+def agentWebsocketApp(using
+    JsonEncoder[OutgoingMessage]
+): WebSocketApp[Broker & JsonRpcOutgoingMessagesStore & OutgoingMessageIdGenerator] =
   Handler.webSocket { channel =>
     (for {
       // listen for outgoing messages

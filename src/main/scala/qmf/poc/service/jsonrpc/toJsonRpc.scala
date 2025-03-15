@@ -13,6 +13,6 @@ private def jsonRpcRequest(method: String, message: OutgoingMessage)(using
 
 def toJsonRpc(message: OutgoingMessage)(using JsonEncoder[OutgoingMessage]): URIO[JsonRpcOutgoingMessagesStore, String] =
   message match
-    case ping @ Ping(_)                            => jsonRpcRequest("ping", ping)
-    case request @ RequestSnapshot(_, _)           => jsonRpcRequest("snapshot", request)
-    case request @ RequestRunObject(_, _, _, _, _) => jsonRpcRequest("run", request)
+    case ping @ Ping(_, _)                            => jsonRpcRequest("ping", ping)
+    case request @ RequestSnapshot(_, _, _)           => jsonRpcRequest("snapshot", request)
+    case request @ RequestRunObject(_, _, _, _, _, _) => jsonRpcRequest("run", request)
