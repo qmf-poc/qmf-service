@@ -1,6 +1,6 @@
 package qmf.poc.service
 
-import qmf.poc.service.agent.{Broker, BrokerLive, IncomingMessage, OutgoingMessage, OutgoingMessageIdGenerator}
+import qmf.poc.service.agent.{AgentError, Broker, BrokerLive, IncomingMessage, OutgoingMessage, OutgoingMessageIdGenerator}
 import qmf.poc.service.http.server
 import qmf.poc.service.jsonrpc.JsonRpcOutgoingMessagesStore
 import qmf.poc.service.repository.{LuceneRepository, Repository}
@@ -23,8 +23,8 @@ object Main extends ZIOAppDefault:
   override def run: ZIO[Environment & ZIOAppArgs & Scope, Any, Any] =
     val repositoryLayer: ULayer[Repository] = LuceneRepository.layer
     val brokerQueueLayer: ULayer[Queue[OutgoingMessage]] = ZLayer(Queue.sliding[OutgoingMessage](100))
-    val brokerPromises: ULayer[Ref[Map[Int, Promise[Nothing, IncomingMessage]]]] =
-      ZLayer.fromZIO(Ref.make(Map.empty[Int, Promise[Nothing, IncomingMessage]]))
+    val brokerPromises: ULayer[Ref[Map[Int, Promise[AgentError, IncomingMessage]]]] =
+      ZLayer.fromZIO(Ref.make(Map.empty[Int, Promise[AgentError, IncomingMessage]]))
     val brokerLayer: ULayer[Broker] = (repositoryLayer ++ brokerQueueLayer ++ brokerPromises) >>> BrokerLive.layer
     val jsonRpcLayer: ULayer[JsonRpcOutgoingMessagesStore] = ZLayer.succeed(JsonRpcOutgoingMessagesStore.live)
     val outgoingMessageIdGenerator: ULayer[OutgoingMessageIdGenerator] = ZLayer.succeed(OutgoingMessageIdGenerator.live)

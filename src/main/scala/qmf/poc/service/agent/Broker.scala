@@ -1,6 +1,7 @@
 package qmf.poc.service.agent
 
 import qmf.poc.service.agent.{IncomingMessage, OutgoingMessage}
+import qmf.poc.service.jsonrpc.JsonRPCError
 import qmf.poc.service.repository.{Repository, RepositoryError}
 import zio.{IO, Layer, Promise, Queue, Task, UIO, URLayer, ZIO, ZLayer}
 
@@ -25,6 +26,8 @@ object ResponseType {
 trait Broker:
   def handle(incoming: IncomingMessage): ZIO[OutgoingMessageIdGenerator, RepositoryError, Unit]
 
+  def handle(error: AgentError): ZIO[OutgoingMessageIdGenerator, Nothing, Unit]
+
   def take: UIO[OutgoingMessage]
 
-  def put[Req <: OutgoingMessage](message: Req)(using rt: ResponseType[Req]): UIO[Promise[Nothing, rt.Res]]
+  def put[Req <: OutgoingMessage](message: Req)(using rt: ResponseType[Req]): UIO[Promise[AgentError, rt.Res]]

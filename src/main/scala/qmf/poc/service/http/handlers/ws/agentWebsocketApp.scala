@@ -1,7 +1,7 @@
 package qmf.poc.service.http.handlers.ws
 
-import qmf.poc.service.agent.{Broker, OutgoingMessage, OutgoingMessageIdGenerator}
-import qmf.poc.service.jsonrpc.{JsonRPCDecodeError, JsonRpcOutgoingMessagesStore, fromJsonRpc, toJsonRpc}
+import qmf.poc.service.agent.{AgentError, Broker, OutgoingMessage, OutgoingMessageIdGenerator}
+import qmf.poc.service.jsonrpc.{JsonRPCError, JsonRpcOutgoingMessagesStore, fromJsonRpc, toJsonRpc}
 import qmf.poc.service.repository.RepositoryError
 import zio.http.ChannelEvent.Read
 import zio.http.{ChannelEvent, Handler, WebSocketApp, WebSocketFrame}
@@ -11,23 +11,33 @@ import zio.{Ref, ZIO}
 import scala.language.postfixOps
 
 def handleIncomingMessage(
-    frameAccumulator: Ref[Array[Byte]],
-    broker: Broker
-): ZIO[JsonRpcOutgoingMessagesStore & OutgoingMessageIdGenerator, JsonRPCDecodeError | RepositoryError, Unit] =
+    frameAccumulator: Ref[Array[Byte]]
+): ZIO[JsonRpcOutgoingMessagesStore & OutgoingMessageIdGenerator & Broker, Nothing, Unit] =
   for {
+    broker <- ZIO.service[Broker]
     accumulated <- frameAccumulator.getAndSet(Array[Byte]())
-    message <- fromJsonRpc(String(accumulated, "ASCII")).tapError(error =>
-      ZIO.logWarning(s"Parse error: ${error.message} (length: ${accumulated.length})")
-    )
-    _ <- ZIO.logDebug(s"Send message $message to broker")
-    r <- broker.handle(message).tapError(error => ZIO.logWarning(s"Handle error: ${error.message}"))
-  } yield r
+    asciiStr = String(accumulated, "ASCII")
+    _ <- ZIO.logDebug(s"handleIncomingMessage(raw): ${ellipse(asciiStr)}")
+    incomingMessage <- fromJsonRpc(String(accumulated, "ASCII"))
+      .foldZIO(
+        {
+          case e: AgentError   => ZIO.logWarning(e.toString) *> broker.handle(e)
+          case e: JsonRPCError => ZIO.logWarning(e.toString) *> broker.handle(AgentError(e.message, None))
+        },
+        msg =>
+          ZIO.logDebug(s"handleIncomingMessage(decoded): $msg") *> broker
+            .handle(msg)
+      )
+      .catchAll { e => ZIO.logWarning(e.toString) *> broker.handle(AgentError("Server error", None)) }
+  } yield ()
+
+private def ellipse(s: String): String = if (s.length > 200) s.take(200) + "..." else s
 
 def agentWebsocketApp(using
     JsonEncoder[OutgoingMessage]
 ): WebSocketApp[Broker & JsonRpcOutgoingMessagesStore & OutgoingMessageIdGenerator] =
   Handler.webSocket { channel =>
-    (for {
+    for {
       // listen for outgoing messages
       broker <- ZIO.service[Broker]
       listener <- (for {
@@ -54,15 +64,15 @@ def agentWebsocketApp(using
               ZIO.logDebug(s"ws <== Ping")
             case frame: WebSocketFrame.Text =>
               for {
-                _ <- ZIO.logDebug(s"ws <== WebSocketFrame.Text(${frame.text.length})")
+                _ <- ZIO.logDebug(s"ws <== WebSocketFrame.Text(${ellipse(frame.text)}), final = ${frame.isFinal}")
                 _ <- frameAccumulator.update(_ ++ frame.text.getBytes)
-                _ <- ZIO.when(frame.isFinal)(handleIncomingMessage(frameAccumulator, broker))
+                _ <- ZIO.when(frame.isFinal)(handleIncomingMessage(frameAccumulator))
               } yield ()
             case frame: WebSocketFrame.Continuation =>
               for
                 _ <- ZIO.logDebug(s"ws <== WebSocketFrame.Continuation(${frame.buffer.length})")
                 _ <- frameAccumulator.update(_ ++ frame.buffer)
-                _ <- ZIO.when(frame.isFinal)(handleIncomingMessage(frameAccumulator, broker))
+                _ <- ZIO.when(frame.isFinal)(handleIncomingMessage(frameAccumulator))
               yield ()
             case _ =>
               ZIO.logDebug("Unknown")
@@ -86,5 +96,5 @@ def agentWebsocketApp(using
       }
       _ <- listener.interrupt
       _ <- ZIO.logDebug("exit channel")
-    } yield ()).mapError(e => Exception(e.toString))
+    } yield () // ).mapError(e => Exception(e.toString))
   }

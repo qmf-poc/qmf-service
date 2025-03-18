@@ -3,7 +3,6 @@ package qmf.poc.service.jsonrpc
 import qmf.poc.service.agent.OutgoingMessage
 
 import scala.collection.mutable
-import scala.util.Random
 
 trait JsonRpcOutgoingMessagesStore:
   def push(message: OutgoingMessage): Int

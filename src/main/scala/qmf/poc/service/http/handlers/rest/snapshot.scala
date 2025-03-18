@@ -2,16 +2,24 @@ package qmf.poc.service.http.handlers.rest
 
 import qmf.poc.service.agent.{Broker, OutgoingMessageIdGenerator, RequestSnapshot}
 import zio.ZIO
-import zio.http.{Request, Response}
+import zio.http.{Request, Response, Status}
 
 def snapshot: Request => ZIO[Broker & OutgoingMessageIdGenerator, Nothing, Response] = (request: Request) =>
-  for {
+  (for {
     broker <- ZIO.service[Broker]
     id <- ZIO.serviceWithZIO[OutgoingMessageIdGenerator](_.nextId)
     promise <- broker.put(RequestSnapshot.default(id))
     _ <- promise.await
     response <- ZIO.succeed(Response.text(s"synced"))
-  } yield response
+  } yield response).catchAll(error =>
+    ZIO
+      .logError(error.message)
+      .as(
+        Response
+          .text(error.message)
+          .status(Status.BadRequest)
+      )
+  )
 
 /*
   ZIO

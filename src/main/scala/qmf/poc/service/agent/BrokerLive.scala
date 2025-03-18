@@ -6,9 +6,19 @@ import zio.{Promise, Queue, Ref, UIO, URLayer, ZIO, ZLayer}
 class BrokerLive(
     outgoingQueue: Queue[OutgoingMessage],
     repository: Repository,
-    pending: Ref[Map[Int, Promise[Nothing, IncomingMessage]]]
+    pending: Ref[Map[Int, Promise[AgentError, IncomingMessage]]]
 ) extends Broker:
-  override def handle(incoming: IncomingMessage): ZIO[OutgoingMessageIdGenerator, RepositoryError, Unit] =
+  def handle(error: AgentError): ZIO[OutgoingMessageIdGenerator, Nothing, Unit] = for {
+    _ <- ZIO.logDebug(s"broker handles $error")
+    _ <- error.outgoingMessage match
+      case Some(message: OutgoingMessage) =>
+        pending.modify(map => (map.get(message.id), map - message.id)).flatMap {
+          case Some(p) => p.fail(error).unit
+          case _       => ZIO.unit
+        }
+      case _ => ZIO.unit
+  } yield ()
+  def handle(incoming: IncomingMessage): ZIO[OutgoingMessageIdGenerator, RepositoryError, Unit] =
     incoming match
       case Alive(agent) =>
         for {
@@ -20,7 +30,8 @@ class BrokerLive(
         } yield ()
       case pong @ Pong(payload, ping) =>
         for {
-          _ <- ZIO.logDebug(s"broker handles pong(payload=$payload, ping=$ping)")
+          //_ <- ZIO.logDebug(s"broker handles pong(payload=$payload, pong=$pong)")
+          _ <- ZIO.logDebug(s"broker handles pong(payload=, pong=)")
           maybePromise <- pending.modify(map => (map.get(ping.id), map - ping.id))
           _ <- maybePromise.fold(ZIO.unit)(_.succeed(pong))
         } yield ()
@@ -38,19 +49,20 @@ class BrokerLive(
           _ <- maybePromise.fold(ZIO.unit)(_.succeed(result))
         } yield ()
 
-  override def take: UIO[OutgoingMessage] =
+  def take: UIO[OutgoingMessage] =
     outgoingQueue.take.tap(m => ZIO.logDebug(s"outgoing message took $m"))
 
-  private def putM(message: OutgoingMessage): UIO[Promise[Nothing, IncomingMessage]] = for {
-    promise <- Promise.make[Nothing, IncomingMessage]
+  private def putM(message: OutgoingMessage): UIO[Promise[AgentError, IncomingMessage]] = for {
+    promise <- Promise.make[AgentError, IncomingMessage]
     _ <- pending.update(_ + (message.id -> promise))
     _ <- outgoingQueue.offer(message)
-    _ <- ZIO.logDebug(s"outgoing message $message offered $message")
+    p <- pending.get
+    _ <- ZIO.logDebug(s"outgoing message offered $message, pending.length=${p.size}")
   } yield promise
 
-  def put[Req <: OutgoingMessage](message: Req)(using rt: ResponseType[Req]): UIO[Promise[Nothing, rt.Res]] =
-    putM(message).map(_.asInstanceOf[Promise[Nothing, rt.Res]])
+  def put[Req <: OutgoingMessage](message: Req)(using rt: ResponseType[Req]): UIO[Promise[AgentError, rt.Res]] =
+    putM(message).map(_.asInstanceOf[Promise[AgentError, rt.Res]])
 
 object BrokerLive:
-  val layer: URLayer[Queue[OutgoingMessage] & Repository & Ref[Map[Int, Promise[Nothing, IncomingMessage]]], Broker] =
+  val layer: URLayer[Queue[OutgoingMessage] & Repository & Ref[Map[Int, Promise[AgentError, IncomingMessage]]], Broker] =
     ZLayer.fromFunction(BrokerLive(_, _, _))

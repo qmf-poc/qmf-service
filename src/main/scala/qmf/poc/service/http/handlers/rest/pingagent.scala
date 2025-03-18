@@ -6,20 +6,18 @@ import zio.http.{Request, Response, Status}
 
 def pingAgent: Request => ZIO[Broker & OutgoingMessageIdGenerator, Nothing, Response] = (request: Request) =>
   val payload = s"ping-agent ${System.currentTimeMillis()}"
-  for {
+  (for {
     broker <- ZIO.service[Broker]
     id <- ZIO.serviceWithZIO[OutgoingMessageIdGenerator](_.nextId)
     promise <- broker.put(Ping(id, payload))
     pong <- promise.await
     response <- ZIO.succeed(Response.text(s"pong: $pong"))
-  } yield response
-/*).catchAll(error =>
+  } yield response).catchAll(error =>
     ZIO
-      .logError(error.getMessage)
+      .logError(error.message)
       .as(
         Response
-          .text(error.getMessage)
+          .text(error.message)
           .status(Status.BadRequest)
       )
   )
- */

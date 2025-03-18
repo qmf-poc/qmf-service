@@ -7,13 +7,21 @@ import zio.http.{Request, Response, Status}
 def run: Request => ZIO[Broker & OutgoingMessageIdGenerator, Nothing, Response] = (request: Request) =>
   val owner = request.url.queryParams("owner").headOption.getOrElse("null")
   val name = request.url.queryParams("name").headOption.getOrElse("null")
-  for {
+  (for {
     broker <- ZIO.service[Broker]
     id <- ZIO.serviceWithZIO[OutgoingMessageIdGenerator](_.nextId)
     promise <- broker.put(RequestRunObject(id, owner, name))
     result <- promise.await
     response <- ZIO.succeed(Response.text(result.body))
-  } yield response
+  } yield response).catchAll(error =>
+    ZIO
+      .logError(error.message)
+      .as(
+        Response
+          .text(error.message)
+          .status(Status.BadRequest)
+      )
+  )
 
 /*
   ZIO
