@@ -45,4 +45,7 @@ build/
 
 ### Scala ###
 .bsp/
+
+### extra
 .idea/workspace.xml
+dependency-reduced-pom.xml
