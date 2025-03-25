@@ -9,14 +9,12 @@ case class QMFObject(owner: String, name: String, typ: String, remarks: String, 
   override def toString: String = id
 
 object QMFObject:
-  def apply(owner: String, name: String, typ: String, remarks: String, applData: Array[Byte]) =
-    new QMFObject(owner, name, typ, remarks, applData.toUTF8)
+  def apply(owner: String, name: String, typ: String, remarks: String, applData: String) =
+    new QMFObject(owner, name, typ, remarks, applData)
 
   // compatibility with the previous version
   def apply(owner: String, name: String, typ: String, applData: String) =
     new QMFObject(owner, name, typ, "", applData)
-
-  extension (a: Array[Byte]) def toUTF8: String = new String(a, "IBM1047")
 
   // given JsonEncoder[QMFObject] = DeriveJsonEncoder.gen[QMFObject]
   given JsonEncoder[QMFObject] = JsonEncoder[Map[String, Json]].contramap { obj =>

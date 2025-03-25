@@ -2,7 +2,6 @@ package qmf.poc.service.http.handlers.ws
 
 import qmf.poc.service.agent.{AgentError, Broker, OutgoingMessage, OutgoingMessageIdGenerator}
 import qmf.poc.service.jsonrpc.{JsonRPCError, JsonRpcOutgoingMessagesStore, fromJsonRpc, toJsonRpc}
-import qmf.poc.service.repository.RepositoryError
 import zio.http.ChannelEvent.Read
 import zio.http.{ChannelEvent, Handler, WebSocketApp, WebSocketFrame}
 import zio.json.JsonEncoder
@@ -47,7 +46,7 @@ def agentWebsocketApp(using
         jsonRpc <- toJsonRpc(message)
         _ <- ZIO.logDebug(s"ws send $jsonRpc")
         r <- channel.send(Read(WebSocketFrame.Text(jsonRpc)))
-      } yield ()).forever.fork.ensuring(ZIO.logDebug("ws broker listener interrupted"))
+      } yield ()).forever.ensuring(ZIO.logDebug("ws broker listener interrupted")).fork
       frameAccumulator <- Ref.make(Array[Byte]())
       _ <- ZIO.logDebug(s"ws channel.receiveAll")
       // listen for incoming messages

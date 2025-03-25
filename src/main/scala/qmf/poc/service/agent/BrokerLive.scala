@@ -30,8 +30,7 @@ class BrokerLive(
         } yield ()
       case pong @ Pong(payload, ping) =>
         for {
-          //_ <- ZIO.logDebug(s"broker handles pong(payload=$payload, pong=$pong)")
-          _ <- ZIO.logDebug(s"broker handles pong(payload=, pong=)")
+          _ <- ZIO.logDebug(s"broker handles pong(payload=$payload, pong=$pong)")
           maybePromise <- pending.modify(map => (map.get(ping.id), map - ping.id))
           _ <- maybePromise.fold(ZIO.unit)(_.succeed(pong))
         } yield ()
