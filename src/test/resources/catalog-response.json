@@ -1,0 +1,62 @@
+{
+  "result": {
+    "catalog": {
+      "objectData": [
+        {
+          "owner": "owner1",
+          "name": "name1",
+          "type": "type2",
+          "appldata": "appldata1",
+        },
+        {
+          "owner": "owner2",
+          "name": "name2",
+          "type": "type2",
+          "appldata": "appldata2"
+        }
+      ],
+      "objectRemarks": [
+        {
+          "owner": "owner1",
+          "name": "name1",
+          "type": "type1",
+          "remarks": "remarks1"
+        },
+        {
+          "owner": "owner2",
+          "name": "name2",
+          "type": "type2",
+          "remarks": "remarks2"
+        }
+      ],
+      "objectDirectories": [
+        {
+          "owner": "owner1",
+          "name": "name1",
+          "type": "type1",
+          "subType": "SQL     ",
+          "objectLevel": 2,
+          "restricted": "N",
+          "model": "        ",
+          "created": "2022-08-11 13:28:02.632",
+          "modified": "2022-08-11 13:28:02.649",
+          "lastUsed": "2022-08-11 14:42:22.999"
+        },
+        {
+          "owner": "owner2",
+          "name": "name2",
+          "type": "type1",
+          "subType": "        ",
+          "objectLevel": 2,
+          "restricted": "N",
+          "model": "        ",
+          "created": "2022-08-11 13:30:18.269",
+          "modified": "2022-08-11 14:38:17.699",
+          "lastUsed": "2022-08-11 16:08:58.502"
+        }
+      ]
+    }
+  },
+  "id": 335752548,
+  "jsonrpc": "2.0"
+}

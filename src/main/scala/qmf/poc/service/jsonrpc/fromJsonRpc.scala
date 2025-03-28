@@ -35,12 +35,14 @@ private def handleResult(resultObj: Json, obj: Json.Obj): ZIO[JsonRpcOutgoingMes
       // TODO:
       case ping: Ping =>
         for {
-          payload <- ZIO.fromOption(resultObj.asString).orElseFail(JsonRPCError("result is not string"))
+          payload: String <- ZIO.fromOption(resultObj.asString).orElseFail(JsonRPCError("result is not string"))
           pong <- ZIO.succeed(Pong(payload, ping))
         } yield pong
       case requestSnapshot: RequestSnapshot =>
         for {
-          catalog <- ZIO.fromEither(resultObj.toJson.fromJson[CatalogSnapshot]).mapError(error => JsonRPCError(error))
+          result: Json.Obj <- ZIO.fromOption[Json.Obj](resultObj.asObject).orElseFail(JsonRPCError("result must be a object"))
+          catalogJson: Json <- ZIO.fromOption(result.get("catalog")).orElseFail(JsonRPCError("result must have catalog"))
+          catalog: CatalogSnapshot <- ZIO.fromEither(catalogJson.as[CatalogSnapshot]).mapError(JsonRPCError(_))
           snapshot <- ZIO.succeed(Snapshot(catalog, requestSnapshot))
         } yield snapshot
       case requestRunObject: RequestRunObject =>

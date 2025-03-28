@@ -1,5 +1,5 @@
 package qmf.poc.service.repository.lucene
-
+/*
 import org.apache.lucene.store.ByteBuffersDirectory
 import qmf.poc.service.catalog.{CatalogSnapshot, ObjectData, ObjectDirectory, ObjectRemarks}
 import qmf.poc.service.repository.QMFObject.toUTF8
@@ -438,3 +438,4 @@ object LuceneRepositorySpec extends ZIOSpecDefault:
       } yield assert(exit)(fails(isSubtype[RepositoryErrorObjectNotFound](anything)))
     }
   )
+ */

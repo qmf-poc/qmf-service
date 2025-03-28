@@ -1,12 +1,10 @@
 package qmf.poc.service.json
 
-import qmf.poc.service.agent.{IncomingMessage, Ping}
-import qmf.poc.service.agent.MessageJson.given
-import qmf.poc.service.catalog.ObjectDirectory
-import qmf.poc.service.http.handlers.ws.*
-import zio.json.{DeriveJsonEncoder, JsonDecoder, JsonEncoder, given}
+import qmf.poc.service.catalog.CatalogSnapshot
+import qmf.poc.service.json.JsonSpec.test
 import zio.json.ast.Json
-import zio.test.{Assertion, Spec, TestAspect, ZIOSpecDefault, assert}
+import zio.json.{DeriveJsonEncoder, JsonEncoder, given}
+import zio.test.{Assertion, Spec, ZIOSpecDefault, assert, assertCompletes}
 
 object JsonSpec extends ZIOSpecDefault:
   def spec: Spec[Any, Nothing] = suite("Json test")(
@@ -45,6 +43,38 @@ object JsonSpec extends ZIOSpecDefault:
       val v = Some("a").toLeft("b")
       assert(v)(Assertion.equalTo(Left("a")))
     },
+    test("CatalogSnapshot encode") {
+      // Arrange
+      val catalog = CatalogSnapshot(Nil, Seq.empty, Seq.empty)
+      // Act
+      val jsonRpc = catalog.toJson
+      // Assert
+      val expected = """{"objectData":[],"objectRemarks":[],"objectDirectories":[]}"""
+      assert(jsonRpc)(Assertion.equalTo(expected))
+    },
+    test("CatalogSnapshot result encode") {
+      // Arrange
+      val catalog = CatalogSnapshot(Seq.empty, Seq.empty, Seq.empty)
+      val result = Map("catalog" -> catalog)
+      // Act
+      val jsonRpc = result.toJson
+      // Assert
+      val expected = """{"catalog":{"objectData":[],"objectRemarks":[],"objectDirectories":[]}}"""
+      assert(jsonRpc)(Assertion.equalTo(expected))
+    },
+    test("CatalogSnapshot decode") {
+      val jsonRpc = """{"objectData":[],"objectRemarks":[],"objectDirectories":[]}"""
+      val catalogSnapshot = jsonRpc.fromJson[CatalogSnapshot]
+      assert(catalogSnapshot)(Assertion.equalTo(CatalogSnapshot(Nil, Nil, Nil)))
+    },
+    test("CatalogSnapshot result decode") {
+      val jsonRpc = """{"catalog":{"objectData":[],"objectRemarks":[],"objectDirectories":[]}}"""
+      val objJson: Either[String, Json.Obj] = jsonRpc.fromJson[Json.Obj]
+      val objCatalog: Either[String, Json] = objJson.toOption.flatMap(obj => obj.get("catalog")).toRight("No catalog")
+      val catalog: Either[String, CatalogSnapshot] = objCatalog.flatMap(obj => obj.as[CatalogSnapshot])
+
+      assert(catalog)(Assertion.equalTo(Right(CatalogSnapshot(Nil, Nil, Nil))))
+    }
     /*
     test("match jsonrpc error method not found") {
       val string = """{"jsonrpc": "2.0", "params": "agent"}"""

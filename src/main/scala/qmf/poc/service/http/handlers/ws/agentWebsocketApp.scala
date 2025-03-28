@@ -15,9 +15,9 @@ def handleIncomingMessage(
   for {
     broker <- ZIO.service[Broker]
     accumulated <- frameAccumulator.getAndSet(Array[Byte]())
-    asciiStr = String(accumulated, "ASCII")
+    asciiStr = String(accumulated) // TODO: encoding
     _ <- ZIO.logDebug(s"handleIncomingMessage(raw): ${ellipse(asciiStr)}")
-    incomingMessage <- fromJsonRpc(String(accumulated, "ASCII"))
+    incomingMessage <- fromJsonRpc(asciiStr)
       .foldZIO(
         { e =>
           ZIO.logWarning(e.toString) *> broker.handle(e)

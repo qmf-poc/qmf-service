@@ -1,6 +1,6 @@
 package qmf.poc.service.catalog
 
-import zio.json.{DeriveJsonDecoder, JsonDecoder}
+import zio.json.{DeriveJsonDecoder, DeriveJsonEncoder, JsonDecoder, JsonEncoder}
 
 case class CatalogSnapshot(objectData: Seq[ObjectData], objectRemarks: Seq[ObjectRemarks], objectDirectories: Seq[ObjectDirectory]):
   override def toString: String = {
@@ -8,6 +8,5 @@ case class CatalogSnapshot(objectData: Seq[ObjectData], objectRemarks: Seq[Objec
   }
 
 object CatalogSnapshot:
-  given JsonDecoder[CatalogSnapshot] = DeriveJsonDecoder.gen[CatalogSnapshot].mapOrFail { obj =>
-    Right(obj.copy())
-  }
+  given JsonDecoder[CatalogSnapshot] = DeriveJsonDecoder.gen[CatalogSnapshot]
+  given JsonEncoder[CatalogSnapshot] = DeriveJsonEncoder.gen[CatalogSnapshot]
