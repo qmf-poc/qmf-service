@@ -5,21 +5,15 @@ import zio.ZIO
 import zio.http.{Request, Response, Status}
 
 def snapshot: Request => ZIO[Broker & OutgoingMessageIdGenerator, Nothing, Response] = (request: Request) =>
-  (for {
+  for {
     broker <- ZIO.service[Broker]
     id <- ZIO.serviceWithZIO[OutgoingMessageIdGenerator](_.nextId)
     promise <- broker.put(RequestSnapshot.default(id))
-    _ <- promise.await
-    response <- ZIO.succeed(Response.text(s"synced"))
-  } yield response).catchAll(error =>
-    ZIO
-      .logError(error.message)
-      .as(
-        Response
-          .text(error.message)
-          .status(Status.BadRequest)
-      )
-  )
+    response <- promise.await.fold(
+      err => { Response.error(Status.InternalServerError, err.message) },
+      _ => { Response.text(s"synced") }
+    )
+  } yield response
 
 /*
   ZIO

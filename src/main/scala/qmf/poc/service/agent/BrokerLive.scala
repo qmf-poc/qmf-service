@@ -9,11 +9,11 @@ class BrokerLive(
     pending: Ref[Map[Int, Promise[AgentError, IncomingMessage]]]
 ) extends Broker:
   def handle(error: AgentError): ZIO[OutgoingMessageIdGenerator, Nothing, Unit] = for {
-    _ <- ZIO.logDebug(s"broker handles $error")
+    _ <- ZIO.logDebug(s"broker handles ${error.message} for outgoing message: ${error.outgoingMessage}")
     _ <- error.outgoingMessage match
       case Some(message: OutgoingMessage) =>
         pending.modify(map => (map.get(message.id), map - message.id)).flatMap {
-          case Some(p) => p.fail(error).unit
+          case Some(p) => ZIO.logDebug(s"Fail pending id=${message.id}") *> p.fail(error).unit
           case _       => ZIO.unit
         }
       case _ => ZIO.unit
@@ -38,6 +38,7 @@ class BrokerLive(
         for {
           _ <- ZIO.logDebug(s"broker handles catalog $catalog")
           _ <- repository.load(catalog)
+          // TODO: error deos not cause pending to
           maybePromise <- pending.modify(map => (map.get(requestSnapshot.id), map - requestSnapshot.id))
           _ <- maybePromise.fold(ZIO.unit)(_.succeed(snapshot))
         } yield ()
@@ -54,6 +55,7 @@ class BrokerLive(
   private def putM(message: OutgoingMessage): UIO[Promise[AgentError, IncomingMessage]] = for {
     promise <- Promise.make[AgentError, IncomingMessage]
     _ <- pending.update(_ + (message.id -> promise))
+    _ <- ZIO.logDebug(s"pending promise added: ${message.id}")
     _ <- outgoingQueue.offer(message)
     p <- pending.get
     _ <- ZIO.logDebug(s"outgoing message offered $message, pending.length=${p.size}")

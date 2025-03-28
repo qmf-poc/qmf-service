@@ -19,9 +19,8 @@ def handleIncomingMessage(
     _ <- ZIO.logDebug(s"handleIncomingMessage(raw): ${ellipse(asciiStr)}")
     incomingMessage <- fromJsonRpc(String(accumulated, "ASCII"))
       .foldZIO(
-        {
-          case e: AgentError   => ZIO.logWarning(e.toString) *> broker.handle(e)
-          case e: JsonRPCError => ZIO.logWarning(e.toString) *> broker.handle(AgentError(e.message, None))
+        { e =>
+          ZIO.logWarning(e.toString) *> broker.handle(e)
         },
         msg =>
           ZIO.logDebug(s"handleIncomingMessage(decoded): $msg") *> broker

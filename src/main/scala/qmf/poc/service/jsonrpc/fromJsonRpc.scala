@@ -26,10 +26,13 @@ private def paramsString(obj: Json.Obj): IO[JsonRPCError, String] =
 
 private def handleMethod(json: Json, obj: Json.Obj) = ???
 
-private def handleResult(resultObj: Json, obj: Json.Obj): ZIO[JsonRpcOutgoingMessagesStore, JsonRPCError, IncomingMessage] =
+private def handleResult(resultObj: Json, obj: Json.Obj): ZIO[JsonRpcOutgoingMessagesStore, AgentError, IncomingMessage] =
   for {
-    request <- fromStore(obj)
-    message <- request match
+    _ <- ZIO.logDebug(s"handle result")
+    request <- fromStore(obj).mapError(error => AgentError(error.message, None))
+    _ <- ZIO.logDebug(s"found request $request")
+    message <- (request match {
+      // TODO:
       case ping: Ping =>
         for {
           payload <- ZIO.fromOption(resultObj.asString).orElseFail(JsonRPCError("result is not string"))
@@ -46,9 +49,10 @@ private def handleResult(resultObj: Json, obj: Json.Obj): ZIO[JsonRpcOutgoingMes
           body <- ZIO.fromOption(ro.get("body").flatMap(b => b.asString)).orElseFail(JsonRPCError("result has no body"))
           result <- ZIO.succeed(RunObjectResult("html", body, requestRunObject))
         } yield result
+    }).mapError(error => AgentError(error.message, Some(request)))
   } yield message
 
-private def extractError(om: OutgoingMessage, resultObj: Json): IO[AgentError | JsonRPCError, Nothing] =
+private def extractError(om: OutgoingMessage, resultObj: Json): IO[JsonRPCError, Nothing] =
   resultObj.asObject match {
     case Some(obj) => {
       val code = obj.get("code") match
@@ -60,7 +64,7 @@ private def extractError(om: OutgoingMessage, resultObj: Json): IO[AgentError | 
       val data = obj.get("data") match
         case Some(Json.Obj(data)) => data
         case _                    => Json.Obj()
-      ZIO.fail(AgentError(s"Error code=$code, message=$message, data=$data. ($om)", Some(om)))
+      ZIO.fail(JsonRPCError(s"Error code=$code, message=$message, data=$data. ($om)"))
     }
     case None => ZIO.fail(JsonRPCError("Parameter error is not object"))
   }
@@ -71,16 +75,21 @@ private def extractError(om: OutgoingMessage, resultObj: Json): IO[AgentError | 
 private def handleError(
     resultObj: Json,
     obj: Json.Obj
-): ZIO[JsonRpcOutgoingMessagesStore, AgentError | JsonRPCError, IncomingMessage] =
-  fromStore(obj).flatMap(request => extractError(request, resultObj))
-
-def fromJsonRpc(message: String): ZIO[JsonRpcOutgoingMessagesStore, AgentError | JsonRPCError, IncomingMessage] =
+): ZIO[JsonRpcOutgoingMessagesStore, AgentError, IncomingMessage] =
   for {
-    obj <- ZIO.fromEither(message.fromJson[Json.Obj]).mapError(error => JsonRPCError(error))
+    _ <- ZIO.logDebug(s"handle error")
+    request <- fromStore(obj).mapError(error => AgentError(error.message, None))
+    _ <- ZIO.logDebug(s"found request $request")
+    result <- extractError(request, resultObj).mapError(error => AgentError(error.message, Some(request)))
+  } yield result
+
+def fromJsonRpc(message: String): ZIO[JsonRpcOutgoingMessagesStore, AgentError, IncomingMessage] =
+  for {
+    obj <- ZIO.fromEither(message.fromJson[Json.Obj]).mapError(error => AgentError(error, None))
     incoming <- (obj.get("method"), obj.get("result"), obj.get("error")) match {
       case (Some(methodObj), _, _) => handleMethod(methodObj, obj)
       case (_, Some(resultObj), _) => handleResult(resultObj, obj)
-      case (_, _, Some(resultObj)) => handleError(resultObj, obj)
-      case _                       => ZIO.fail(JsonRPCError("Neither method nor result found"))
+      case (_, _, Some(errorObj))  => handleError(errorObj, obj)
+      case _                       => ZIO.fail(AgentError("Neither method nor result nor error found found", None))
     }
   } yield incoming
