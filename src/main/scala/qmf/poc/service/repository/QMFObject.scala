@@ -16,7 +16,7 @@ object QMFObject:
   def apply(owner: String, name: String, typ: String, applData: String) =
     new QMFObject(owner, name, typ, "", applData)
 
-  // given JsonEncoder[QMFObject] = DeriveJsonEncoder.gen[QMFObject]
+  // given JsonEncoder[QMFObject] = DeriveJsonEncoder.gen[QMFObject]: contrmap adds ID
   given JsonEncoder[QMFObject] = JsonEncoder[Map[String, Json]].contramap { obj =>
     Map(
       "owner" -> Json.Str(obj.owner),
