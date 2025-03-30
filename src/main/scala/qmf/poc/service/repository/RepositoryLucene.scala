@@ -68,12 +68,14 @@ class LuceneRepository(directory: Directory) extends Repository:
     counter <- FiberRef.make(0)
     _ <- ZIO.foreachDiscard(keys) { key =>
       val od = data.get(key)
-      val or = remarks.get(key)
+      val or = remarks.get(key).orElse(Some(ObjectRemarks("", "", "", "")))
       val odi = directories.get(key)
       (od, or, odi) match {
         case (Some(odValue), Some(orValue), Some(odiValue)) =>
           val parts = key.split('?')
-          persist(QMFObject(odValue.owner, orValue.name, orValue.`type`, orValue.remarks, odValue.appldata))
+          persist(
+            QMFObject(odValue.owner.trim, odValue.name.trim, odValue.`type`.trim, orValue.remarks.trim, odValue.appldata.trim)
+          )
             .tap(Unit => counter.update(_ + 1))
             .onError(cause => ZIO.logErrorCause(cause))
         case _ =>
@@ -159,7 +161,8 @@ class LuceneRepository(directory: Directory) extends Repository:
       doc.add(new StoredField("name", qmfObject.name))
       doc.add(new StoredField("type", qmfObject.typ))
       doc.add(new TextField("appldata", qmfObject.applData, Field.Store.YES))
-      doc.add(new TextField("remarks", qmfObject.remarks, Field.Store.YES))
+      if (qmfObject.remarks.nonEmpty)
+        doc.add(new TextField("remarks", qmfObject.remarks, Field.Store.YES))
       w.addDocument(doc)
       w.commit()
       ()
