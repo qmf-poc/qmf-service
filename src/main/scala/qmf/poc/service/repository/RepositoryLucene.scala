@@ -103,6 +103,7 @@ class LuceneRepository(directory: Directory) extends Repository:
     }
     .tapError(th => ZIO.logError(th.getMessage))
     .mapError(th => RepositoryErrorThrowable(th))
+    .tap(seq => ZIO.logDebug(s"query returns ${seq.size} documents"))
 
   private inline def luceneId(s: String): LuceneId =
     s.hashCode
