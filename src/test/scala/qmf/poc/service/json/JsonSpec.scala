@@ -45,7 +45,7 @@ object JsonSpec extends ZIOSpecDefault:
     },
     test("CatalogSnapshot encode") {
       // Arrange
-      val catalog = CatalogSnapshot(Nil, Seq.empty, Seq.empty)
+      val catalog = CatalogSnapshot(Nil)
       // Act
       val jsonRpc = catalog.toJson
       // Assert
@@ -54,7 +54,7 @@ object JsonSpec extends ZIOSpecDefault:
     },
     test("CatalogSnapshot result encode") {
       // Arrange
-      val catalog = CatalogSnapshot(Seq.empty, Seq.empty, Seq.empty)
+      val catalog = CatalogSnapshot(Seq.empty)
       val result = Map("catalog" -> catalog)
       // Act
       val jsonRpc = result.toJson
@@ -65,7 +65,7 @@ object JsonSpec extends ZIOSpecDefault:
     test("CatalogSnapshot decode") {
       val jsonRpc = """{"objectData":[],"objectRemarks":[],"objectDirectories":[]}"""
       val catalogSnapshot = jsonRpc.fromJson[CatalogSnapshot]
-      assert(catalogSnapshot)(Assertion.equalTo(CatalogSnapshot(Nil, Nil, Nil)))
+      assert(catalogSnapshot)(Assertion.equalTo(CatalogSnapshot(Nil)))
     },
     test("CatalogSnapshot result decode") {
       val jsonRpc = """{"catalog":{"objectData":[],"objectRemarks":[],"objectDirectories":[]}}"""
@@ -73,7 +73,7 @@ object JsonSpec extends ZIOSpecDefault:
       val objCatalog: Either[String, Json] = objJson.toOption.flatMap(obj => obj.get("catalog")).toRight("No catalog")
       val catalog: Either[String, CatalogSnapshot] = objCatalog.flatMap(obj => obj.as[CatalogSnapshot])
 
-      assert(catalog)(Assertion.equalTo(Right(CatalogSnapshot(Nil, Nil, Nil))))
+      assert(catalog)(Assertion.equalTo(Right(CatalogSnapshot(Nil))))
     }
     /*
     test("match jsonrpc error method not found") {

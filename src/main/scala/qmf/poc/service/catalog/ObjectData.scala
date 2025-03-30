@@ -1,5 +1,5 @@
 package qmf.poc.service.catalog
-
+/*
 import zio.json.{DeriveJsonDecoder, DeriveJsonEncoder, JsonDecoder, JsonEncoder}
 import zio.json.ast.Json
 
@@ -35,3 +35,4 @@ object ObjectData:
   // given JsonDecoder[ObjectData] = JsonDecoder[Json.Obj].mapOrFail(jsonObj => ObjectData(jsonObj))
   given JsonDecoder[ObjectData] = DeriveJsonDecoder.gen[ObjectData]
   given JsonEncoder[ObjectData] = DeriveJsonEncoder.gen[ObjectData]
+ */

@@ -1,8 +1,8 @@
 package qmf.poc.service.catalog
-/*
+
 import zio.json.{DeriveJsonDecoder, DeriveJsonEncoder, JsonDecoder, JsonEncoder}
 
-case class ObjectDirectory(
+case class ObjectAgent(
     owner: String,
     name: String,
     `type`: String,
@@ -12,10 +12,11 @@ case class ObjectDirectory(
     model: String,
     created: String,
     modified: String,
-    lastUsed: String
+    lastUsed: String,
+    appldata: String,
+    remarks: String
 )
 
-object ObjectDirectory:
-  given JsonDecoder[ObjectDirectory] = DeriveJsonDecoder.gen[ObjectDirectory]
-  given JsonEncoder[ObjectDirectory] = DeriveJsonEncoder.gen[ObjectDirectory]
-*/
+object ObjectAgent:
+  given JsonDecoder[ObjectAgent] = DeriveJsonDecoder.gen[ObjectAgent]
+  given JsonEncoder[ObjectAgent] = DeriveJsonEncoder.gen[ObjectAgent]

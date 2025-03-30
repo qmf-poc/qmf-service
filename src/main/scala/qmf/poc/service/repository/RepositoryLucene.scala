@@ -6,7 +6,7 @@ import org.apache.lucene.index.*
 import org.apache.lucene.queryparser.classic.QueryParser
 import org.apache.lucene.search.{IndexSearcher, MatchAllDocsQuery, TopDocs}
 import org.apache.lucene.store.{ByteBuffersDirectory, Directory}
-import qmf.poc.service.catalog.{CatalogSnapshot, ObjectData, ObjectDirectory, ObjectRemarks}
+import qmf.poc.service.catalog.{CatalogSnapshot, ObjectAgent}
 import qmf.poc.service.repository.*
 import qmf.poc.service.repository.LuceneRepository.topDocs2Objects
 import zio.{CanFail, FiberRef, IO, ULayer, ZIO, ZLayer}
@@ -27,7 +27,7 @@ given Conversion[RepositoryError, Throwable] with
     case e: Throwable                     => e
     case e: RepositoryErrorObjectNotFound => Exception(e.message)
 
-private class CatalogSnapshotItem(val data: ObjectData, val directory: ObjectDirectory, val remarks: ObjectRemarks)
+private class CatalogSnapshotItem(val obj: ObjectAgent /*, val directory: ObjectDirectory, val remarks: ObjectRemarks*/ )
 
 class LuceneRepository(directory: Directory) extends Repository:
   private val analyzer = new StandardAnalyzer
@@ -57,38 +57,27 @@ class LuceneRepository(directory: Directory) extends Repository:
       .attemptBlocking {
         w.deleteAll()
         w.commit()
-        // initializeIndex()
       }
       .onError(cause => ZIO.logErrorCause(cause))
       .mapError(th => RepositoryErrorThrowable(th))
-    data = snapshot.objectData.map { d => (s"${d.owner}?${d.name}?${d.`type`}", d) }.toMap
-    remarks = snapshot.objectRemarks.map { d => (s"${d.owner}?${d.name}?${d.`type`}", d) }.toMap
-    directories = snapshot.objectDirectories.map { d => (s"${d.owner}?${d.name}?${d.`type`}", d) }.toMap
-    keys = data.keySet.intersect(remarks.keySet).intersect(directories.keySet)
     counter <- FiberRef.make(0)
-    _ <- ZIO.foreachDiscard(keys) { key =>
-      val od = data.get(key)
-      val or = remarks.get(key).orElse(Some(ObjectRemarks("", "", "", "")))
-      val odi = directories.get(key)
-      (od, or, odi) match {
-        case (Some(odValue), Some(orValue), Some(odiValue)) =>
-          val parts = key.split('?')
+    _ <- ZIO.foreachDiscard(snapshot.qmfObjects) { obj =>
+      counter
+        .updateAndGet(_ + 1)
+        .flatMap((n: Int) =>
           persist(
-            QMFObject(odValue.owner.trim, odValue.name.trim, odValue.`type`.trim, orValue.remarks.trim, odValue.appldata.trim)
+            n,
+            QMFObject(obj.owner.trim, obj.name.trim, obj.`type`.trim, obj.remarks.trim, obj.appldata.trim)
           )
-            .tap(Unit => counter.update(_ + 1))
-            .onError(cause => ZIO.logErrorCause(cause))
-        case _ =>
-          ZIO.logWarning(s"Missing data for key: $key (od: $od, or: $or, odi: $odi)")
-      }
+        )
     }
     c <- counter.get
   } yield c)
 
-  override def persist(qmfObject: QMFObject): IO[RepositoryError, Unit] = for
+  override def persist(i: Int, qmfObject: QMFObject): IO[RepositoryError, Unit] = for
     exists <- has(luceneId(qmfObject))
     _ <- ZIO.when(!exists)(add(qmfObject))
-    _ <- ZIO.logDebug(s"persist: $qmfObject")
+    _ <- ZIO.logDebug(s"persist($i): $qmfObject")
   yield ()
 
   def query(queryString: String): IO[RepositoryError, Seq[QMFObject]] = ZIO
@@ -112,6 +101,7 @@ class LuceneRepository(directory: Directory) extends Repository:
     .catchSome { case _: IndexNotFoundException =>
       ZIO.succeed(Seq())
     }
+    .tapError(th => ZIO.logError(th.getMessage))
     .mapError(th => RepositoryErrorThrowable(th))
 
   private inline def luceneId(s: String): LuceneId =
@@ -152,7 +142,7 @@ class LuceneRepository(directory: Directory) extends Repository:
       }
 
   private def add(qmfObject: QMFObject): IO[RepositoryError, Unit] = ZIO
-    .attempt {
+    .attemptBlocking {
       val doc = new Document()
       doc.add(new IntPoint("ObjectId", luceneId(qmfObject)))
       val record = qmfObject.name + " " + qmfObject.typ + " " + qmfObject.owner
@@ -161,8 +151,6 @@ class LuceneRepository(directory: Directory) extends Repository:
       doc.add(new StoredField("name", qmfObject.name))
       doc.add(new StoredField("type", qmfObject.typ))
       doc.add(new TextField("appldata", qmfObject.applData, Field.Store.YES))
-      // if (qmfObject.remarks.nonEmpty) - hm, i expect the empty fiels is not necessery
-      // but it causes some error
       doc.add(new TextField("remarks", qmfObject.remarks, Field.Store.YES))
       w.addDocument(doc)
       w.commit()
