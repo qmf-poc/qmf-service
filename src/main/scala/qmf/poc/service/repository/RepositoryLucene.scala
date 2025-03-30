@@ -161,8 +161,9 @@ class LuceneRepository(directory: Directory) extends Repository:
       doc.add(new StoredField("name", qmfObject.name))
       doc.add(new StoredField("type", qmfObject.typ))
       doc.add(new TextField("appldata", qmfObject.applData, Field.Store.YES))
-      if (qmfObject.remarks.nonEmpty)
-        doc.add(new TextField("remarks", qmfObject.remarks, Field.Store.YES))
+      // if (qmfObject.remarks.nonEmpty) - hm, i expect the empty fiels is not necessery
+      // but it causes some error
+      doc.add(new TextField("remarks", qmfObject.remarks, Field.Store.YES))
       w.addDocument(doc)
       w.commit()
       ()
