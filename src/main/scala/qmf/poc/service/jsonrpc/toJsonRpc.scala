@@ -15,4 +15,4 @@ def toJsonRpc(message: OutgoingMessage)(using JsonEncoder[OutgoingMessage]): URI
   message match
     case ping @ Ping(_, _)                            => jsonRpcRequest("ping", ping)
     case request @ RequestSnapshot(_, _, _)           => jsonRpcRequest("snapshot", request)
-    case request @ RequestRunObject(_, _, _, _, _, _) => jsonRpcRequest("run", request)
+    case request @ RequestRunObject(_, _, _, _, _, _, _) => jsonRpcRequest("run", request)

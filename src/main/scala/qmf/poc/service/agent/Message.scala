@@ -9,7 +9,7 @@ sealed trait OutgoingMessage:
   val id: Int
 case class Ping(id: Int, payload: String) extends OutgoingMessage
 case class RequestSnapshot(id: Int, user: String, password: String) extends OutgoingMessage
-case class RequestRunObject(id: Int, user: String, password: String, owner: String, name: String, format: String)
+case class RequestRunObject(id: Int, user: String, password: String, owner: String, name: String, format: String, limit: Int)
     extends OutgoingMessage
 
 trait OutgoingMessageIdGenerator:
@@ -24,8 +24,8 @@ object RequestSnapshot:
   def default(id: Int): RequestSnapshot = RequestSnapshot(id, "db2inst1", "password")
 
 object RequestRunObject:
-  def apply(id: Int, owner: String, name: String): RequestRunObject =
-    new RequestRunObject(id, "db2inst1", "password", owner, name, "html")
+  def apply(id: Int, owner: String, name: String, limit: Int): RequestRunObject =
+    new RequestRunObject(id, "db2inst1", "password", owner, name, "html", limit)
 
 sealed trait IncomingMessage
 case class Pong(payload: String, ping: Ping) extends IncomingMessage
@@ -47,12 +47,13 @@ object MessageJson:
         "user" -> Json.Str(user),
         "password" -> Json.Str(password)
       )
-    case RequestRunObject(id, user, password, owner, name, format) =>
+    case RequestRunObject(id, user, password, owner, name, format, limit) =>
       Json.Obj(
         "user" -> Json.Str(user),
         "password" -> Json.Str(password),
         "owner" -> Json.Str(owner),
         "name" -> Json.Str(name),
-        "format" -> Json.Str(format)
+        "format" -> Json.Str(format),
+        "limit" -> Json.Num(limit)
       )
   }
