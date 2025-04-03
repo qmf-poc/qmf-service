@@ -80,24 +80,26 @@ class LuceneRepository(directory: Directory) extends Repository:
     _ <- ZIO.logDebug(s"persist($i): $qmfObject")
   yield ()
 
-  def query(queryString: String): IO[RepositoryError, Seq[QMFObject]] = ZIO
-    .attemptBlocking {
-      // TODO: IndexSearcher should be memoized
+  def query(queryString: String): IO[RepositoryError, Seq[QMFObject]] = (for {
+    s <- ZIO.attemptBlocking { new IndexSearcher(r) }
+    query <- ZIO.attemptBlocking {
       val s = new IndexSearcher(r)
       val queryParser = new QueryParser("record", analyzer)
       queryParser.setAllowLeadingWildcard(true)
-      val query =
-        if (queryString.length <= 2)
-          new MatchAllDocsQuery()
-        else if (queryString.contains(':')) {
-          queryParser.parse(queryString)
-        } else {
-          queryParser.parse(s"*$queryString*")
-        }
-      val results = s.search(query, Int.MaxValue)
-      val storedFields = s.storedFields()
-      topDocs2Objects(results, storedFields).toSeq
+      if (queryString.length <= 2)
+        new MatchAllDocsQuery()
+      else if (queryString.contains(':')) {
+        queryParser.parse(queryString)
+      } else {
+        queryParser.parse(s"*$queryString*")
+      }
     }
+    _ <- ZIO.logDebug(s"Query: $query")
+    result <- ZIO.attemptBlocking(s.search(query, Int.MaxValue))
+    _ <- ZIO.logDebug(s"Results hits: ${result.totalHits}")
+    docs <- ZIO.attemptBlocking(topDocs2Objects(result, s.storedFields()).toSeq)
+    _ <- ZIO.logDebug(s"Final docs count: ${docs.length}")
+  } yield docs)
     .catchSome { case _: IndexNotFoundException =>
       ZIO.succeed(Seq())
     }
