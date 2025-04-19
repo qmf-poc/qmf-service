@@ -1,11 +1,11 @@
 package qmf.poc.service.http
 
-import qmf.poc.service.agent.{Broker, OutgoingMessageIdGenerator}
-import qmf.poc.service.agent.MessageJson.given
-import qmf.poc.service.http.handlers.rest.*
+import qmf.poc.service.agent.AgentsRegistry
+import qmf.poc.service.messages.MessageJson.given
+import qmf.poc.service.http.handlers.queries.*
 import qmf.poc.service.http.handlers.ws.agentWebsocketApp
-import qmf.poc.service.jsonrpc.JsonRpcOutgoingMessagesStore
-import qmf.poc.service.repository.Repository
+import qmf.poc.service.messages.{IncomingMessageHandler, OutgoingMessageHandler, OutgoingMessageIdGenerator, OutgoingMessagesStorage}
+import qmf.poc.service.qmfstorage.QmfObjectsStorage
 import zio.http.*
 import zio.http.Header.AccessControlAllowOrigin
 import zio.http.Method.GET
@@ -33,7 +33,11 @@ private def log: HandlerAspect[Any, Unit] =
     }
   })
 
-def routes: Routes[Broker & JsonRpcOutgoingMessagesStore & Repository & OutgoingMessageIdGenerator, Nothing] =
+def routes: Routes[
+  AgentsRegistry & OutgoingMessagesStorage & IncomingMessageHandler & OutgoingMessageIdGenerator & OutgoingMessageHandler &
+    QmfObjectsStorage,
+  Nothing
+] =
   Routes(
     GET / "ping" -> handler(ping),
     GET / "agent-ping" -> handler(pingAgent),
@@ -46,16 +50,16 @@ def routes: Routes[Broker & JsonRpcOutgoingMessagesStore & Repository & Outgoing
     GET / "run" -> handler(run)
   ) @@ cors(config) @@ log
 
-def server: ZIO[
-  Broker & Server & Repository & JsonRpcOutgoingMessagesStore & OutgoingMessageIdGenerator,
+def qmfHttpServer: ZIO[
+  AgentsRegistry & IncomingMessageHandler & OutgoingMessagesStorage & OutgoingMessageIdGenerator & OutgoingMessageHandler &
+    QmfObjectsStorage & Server,
   Throwable,
   (Promise[Nothing, Unit], Promise[Nothing, Unit])
 ] =
   for
     httpStarted <- Promise.make[Nothing, Unit]
     shutdownSignal <- Promise.make[Nothing, Unit]
-    broker <- ZIO.service[Broker]
-    repository <- ZIO.service[Repository]
+    repository <- ZIO.service[QmfObjectsStorage]
     port <- ZIO.serviceWithZIO[Server](_.install(routes))
     _ <- httpStarted.succeed(())
     _ <- shutdownSignal.await.forkDaemon

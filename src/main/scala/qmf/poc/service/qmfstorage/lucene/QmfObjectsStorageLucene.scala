@@ -1,4 +1,4 @@
-package qmf.poc.service.repository
+package qmf.poc.service.qmfstorage.lucene
 
 import org.apache.lucene.analysis.standard.StandardAnalyzer
 import org.apache.lucene.document.*
@@ -7,29 +7,12 @@ import org.apache.lucene.queryparser.classic.QueryParser
 import org.apache.lucene.search.{IndexSearcher, MatchAllDocsQuery, TopDocs}
 import org.apache.lucene.store.{ByteBuffersDirectory, Directory}
 import qmf.poc.service.catalog.{CatalogSnapshot, ObjectAgent}
-import qmf.poc.service.repository.*
-import qmf.poc.service.repository.LuceneRepository.topDocs2Objects
+import QmfObjectsStorageLucene.topDocs2Objects
+import qmf.poc.service.agent.AgentId
+import qmf.poc.service.qmfstorage.*
 import zio.{CanFail, FiberRef, IO, ULayer, ZIO, ZLayer}
 
-type LuceneId = Int
-
-sealed trait RepositoryError:
-  def message: String
-
-class RepositoryErrorObjectNotFound(id: String) extends RepositoryError:
-  def message: String = s"Object id=$id not found"
-
-class RepositoryErrorThrowable(th: Throwable) extends Exception(th.getMessage, th) with RepositoryError:
-  def message: String = th.getMessage
-
-given Conversion[RepositoryError, Throwable] with
-  def apply(error: RepositoryError): Throwable = error match
-    case e: Throwable                     => e
-    case e: RepositoryErrorObjectNotFound => Exception(e.message)
-
-private class CatalogSnapshotItem(val obj: ObjectAgent /*, val directory: ObjectDirectory, val remarks: ObjectRemarks*/ )
-
-class LuceneRepository(directory: Directory) extends Repository:
+class QmfObjectsStorageLucene(directory: Directory) extends QmfObjectsStorage:
   private val analyzer = new StandardAnalyzer
   private val index = directory // new ByteBuffersDirectory
   private val config = IndexWriterConfig(analyzer)
@@ -52,14 +35,14 @@ class LuceneRepository(directory: Directory) extends Repository:
         newReader
 
   // TODO: blocking
-  override def load(snapshot: CatalogSnapshot): IO[RepositoryError, Int] = ZIO.scoped(for {
+  override def load(snapshot: CatalogSnapshot): IO[QmfObjectsStorageError, Int] = ZIO.scoped(for {
     _ <- ZIO
       .attemptBlocking {
         w.deleteAll()
         w.commit()
       }
       .onError(cause => ZIO.logErrorCause(cause))
-      .mapError(th => RepositoryErrorThrowable(th))
+      .mapError(th => QmfObjectsStorageErrorThrowable(th))
     counter <- FiberRef.make(0)
     _ <- ZIO.foreachDiscard(snapshot.qmfObjects) { obj =>
       counter
@@ -74,13 +57,13 @@ class LuceneRepository(directory: Directory) extends Repository:
     c <- counter.get
   } yield c)
 
-  override def persist(i: Int, qmfObject: QMFObject): IO[RepositoryError, Unit] = for
+  override def persist(agentId: AgentId, logNo: Int, qmfObject: QMFObject): IO[QmfObjectsStorageError, Unit] = for
     exists <- has(luceneId(qmfObject))
-    _ <- ZIO.when(!exists)(add(qmfObject))
-    _ <- ZIO.logDebug(s"persist($i): $qmfObject")
+    _ <- ZIO.when(!exists)(add(agentId, qmfObject))
+    _ <- ZIO.logDebug(s"persist($logNo): $qmfObject")
   yield ()
 
-  def query(queryString: String): IO[RepositoryError, Seq[QMFObject]] = (for {
+  def query(agentId: AgentId, queryString: String): IO[QmfObjectsStorageError, Seq[QMFObject]] = (for {
     s <- ZIO.attemptBlocking { new IndexSearcher(r) }
     query <- ZIO.attemptBlocking {
       val s = new IndexSearcher(r)
@@ -97,23 +80,20 @@ class LuceneRepository(directory: Directory) extends Repository:
     _ <- ZIO.logDebug(s"Query: $query")
     result <- ZIO.attemptBlocking(s.search(query, Int.MaxValue))
     _ <- ZIO.logDebug(s"Results hits: ${result.totalHits}")
-    docs <- ZIO.attemptBlocking(topDocs2Objects(result, s.storedFields()).toSeq)
+    docs <- ZIO.attemptBlocking(topDocs2Objects(result, s.storedFields(), agentId).toSeq)
     _ <- ZIO.logDebug(s"Final docs count: ${docs.length}")
   } yield docs)
     .catchSome { case _: IndexNotFoundException =>
       ZIO.succeed(Seq())
     }
     .tapError(th => ZIO.logError(th.getMessage))
-    .mapError(th => RepositoryErrorThrowable(th))
+    .mapError(th => QmfObjectsStorageErrorThrowable(th))
     .tap(seq => ZIO.logDebug(s"query returns ${seq.size} documents"))
 
-  private inline def luceneId(s: String): LuceneId =
-    s.hashCode
-
   private inline def luceneId(o: QMFObject): LuceneId =
-    luceneId(o.id)
+    LuceneId(o.id)
 
-  private def has(id: LuceneId): IO[RepositoryError, Boolean] = ZIO
+  private def has(id: LuceneId): IO[QmfObjectsStorageError, Boolean] = ZIO
     .attempt {
       val query = IntPoint.newExactQuery("ObjectId", id)
       val s = new IndexSearcher(r)
@@ -123,33 +103,34 @@ class LuceneRepository(directory: Directory) extends Repository:
     .catchSome { case _: IndexNotFoundException =>
       ZIO.succeed(false)
     }
-    .mapError(th => RepositoryErrorThrowable(th))
+    .mapError(th => QmfObjectsStorageErrorThrowable(th))
 
-  def get(id: String): IO[RepositoryError, QMFObject] =
+  def get(agentId: AgentId, id: String): IO[QmfObjectsStorageError, QMFObject] =
     ZIO
       .attempt {
-        val query = IntPoint.newExactQuery("ObjectId", luceneId(id))
+        val query = IntPoint.newExactQuery("ObjectId", LuceneId(id).value)
         val s = new IndexSearcher(r)
         val results = s.search(query, 1)
-        topDocs2Objects(results, s.storedFields())
+        topDocs2Objects(results, s.storedFields(), agentId)
       }
       .catchSome { case _: IndexNotFoundException =>
         ZIO.succeed(Array[QMFObject]())
       }
-      .mapError(th => RepositoryErrorThrowable(th))
+      .mapError(th => QmfObjectsStorageErrorThrowable(th))
       .flatMap { objects =>
         objects.headOption match {
           case Some(firstObject) => ZIO.succeed(firstObject)
-          case None              => ZIO.fail(RepositoryErrorObjectNotFound(id))
+          case None              => ZIO.fail(QmfObjectsStorageErrorObjectNotFound(id))
         }
       }
 
-  private def add(qmfObject: QMFObject): IO[RepositoryError, Unit] = ZIO
+  private def add(agentId: AgentId, qmfObject: QMFObject): IO[QmfObjectsStorageError, Unit] = ZIO
     .attemptBlocking {
       val doc = new Document()
       doc.add(new IntPoint("ObjectId", luceneId(qmfObject)))
       val record = qmfObject.name + " " + qmfObject.typ + " " + qmfObject.owner
       doc.add(new TextField("record", record, Field.Store.YES))
+      doc.add(new StoredField("agenId", agentId.value))
       doc.add(new StoredField("owner", qmfObject.owner))
       doc.add(new StoredField("name", qmfObject.name))
       doc.add(new StoredField("type", qmfObject.typ))
@@ -159,16 +140,18 @@ class LuceneRepository(directory: Directory) extends Repository:
       w.commit()
       ()
     }
-    .mapError(th => RepositoryErrorThrowable(th))
+    .mapError(th => QmfObjectsStorageErrorThrowable(th))
 
-object LuceneRepository:
-  def apply(directory: Directory = new ByteBuffersDirectory()) = new LuceneRepository(directory: Directory)
+object QmfObjectsStorageLucene:
+  def apply(directory: Directory = new ByteBuffersDirectory()) = new QmfObjectsStorageLucene(directory: Directory)
 
-  val layer: ULayer[Repository] = ZLayer.succeed(LuceneRepository())
+  val layer: ULayer[QmfObjectsStorage] = ZLayer.succeed(QmfObjectsStorageLucene())
 
-  private def topDocs2Objects(topDocs: TopDocs, storedFields: StoredFields): Array[QMFObject] =
+  // TODO: performance
+  private def topDocs2Objects(topDocs: TopDocs, storedFields: StoredFields, ofAgent: AgentId): Array[QMFObject] =
     val hits = topDocs.scoreDocs
     hits
+      .filter(hit => storedFields.document(hit.doc).get("agenId") == ofAgent.value)
       .map(hit => {
         val doc = storedFields.document(hit.doc)
         val owner = doc.get("owner")
@@ -176,5 +159,6 @@ object LuceneRepository:
         val typ = doc.get("type")
         val remarks = doc.get("remarks")
         val appldata = doc.get("appldata")
+        val agentId = doc.get("agenId")
         QMFObject(owner, name, typ, remarks, appldata)
       })

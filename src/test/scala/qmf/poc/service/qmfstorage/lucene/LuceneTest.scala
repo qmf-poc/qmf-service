@@ -1,4 +1,4 @@
-package qmf.poc.service.repository.lucene
+package qmf.poc.service.qmfstorage.lucene
 
 import org.apache.lucene.analysis.standard.StandardAnalyzer
 import org.apache.lucene.document.{Document, IntPoint, StoredField, StringField, TextField}

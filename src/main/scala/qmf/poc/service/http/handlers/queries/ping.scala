@@ -1,4 +1,4 @@
-package qmf.poc.service.http.handlers.rest
+package qmf.poc.service.http.handlers.queries
 
 import zio.http.Response
 

@@ -1,4 +1,4 @@
-package qmf.poc.service.repository
+package qmf.poc.service.qmfstorage
 
 import zio.json.ast.Json
 import zio.json.{DeriveJsonEncoder, JsonEncoder, given}

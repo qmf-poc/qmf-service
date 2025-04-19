@@ -1,8 +1,8 @@
-package qmf.poc.service.repository.lucene
+package qmf.poc.service.qmfstorage.lucene
 import org.apache.lucene.store.ByteBuffersDirectory
 import qmf.poc.service.catalog.{CatalogSnapshot, given}
-import qmf.poc.service.repository.lucene.LuceneRepositorySpec.test
-import qmf.poc.service.repository.{LuceneRepository, QMFObject, RepositoryError, RepositoryErrorObjectNotFound}
+import qmf.poc.service.qmfstorage.lucene.LuceneQmfObjectsStorageSpec.test
+import qmf.poc.service.qmfstorage.{QMFObject, QmfObjectsStorageError, QmfObjectsStorageErrorObjectNotFound}
 import zio.{Exit, IO, Scope, ZIO}
 import zio.test.Assertion.{anything, equalTo, fails, hasAt, hasField, isSubtype}
 import zio.test.{Assertion, Spec, TestEnvironment, ZIOSpecDefault, assert, assertCompletes, assertTrue, assertZIO}
@@ -16,16 +16,16 @@ object LuceneRepositoryFixtures:
     json.fromJson[CatalogSnapshot]
   }
 
-object LuceneRepositorySpec extends ZIOSpecDefault:
+object QmfObjectsStorageLuceneSpec$$ extends ZIOSpecDefault:
 
-  import qmf.poc.service.repository.lucene.LuceneRepositoryFixtures.sampleZIO
+  import qmf.poc.service.qmfstorage.lucene.LuceneRepositoryFixtures.sampleZIO
 
   def spec: Spec[TestEnvironment & Scope, Any] = suite("LuceneRepository test")(
     test("sample created") {
       assertZIO(sampleZIO)(Assertion.isSubtype[CatalogSnapshot](anything))
     },
     test("query for all") {
-      val luceneRepository = LuceneRepository(new ByteBuffersDirectory())
+      val luceneRepository = QmfObjectsStorageLucene(new ByteBuffersDirectory())
       val result = for {
         sample <- sampleZIO
         c <- luceneRepository.load(sample)

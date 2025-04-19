@@ -1,4 +1,4 @@
-package qmf.poc.service.repository.lucene
+package qmf.poc.service.qmfstorage.lucene
 
 import java.nio.charset.Charset
 

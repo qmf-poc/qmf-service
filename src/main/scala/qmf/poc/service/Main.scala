@@ -1,9 +1,20 @@
 package qmf.poc.service
 
-import qmf.poc.service.agent.{AgentError, Broker, BrokerLive, IncomingMessage, OutgoingMessage, OutgoingMessageIdGenerator}
-import qmf.poc.service.http.server
-import qmf.poc.service.jsonrpc.JsonRpcOutgoingMessagesStore
-import qmf.poc.service.repository.{LuceneRepository, Repository}
+import qmf.poc.service.agent.{AgentRegistryLive, AgentsRegistry}
+import qmf.poc.service.http.qmfHttpServer
+import qmf.poc.service.messages.{
+  IncomingMessage,
+  IncomingMessageHandler,
+  IncomingMessageHandlerLive,
+  OutgoingMessage,
+  OutgoingMessageError,
+  OutgoingMessageHandler,
+  OutgoingMessageHandlerLive,
+  OutgoingMessageIdGenerator,
+  OutgoingMessagesStorage
+}
+import qmf.poc.service.qmfstorage.QmfObjectsStorage
+import qmf.poc.service.qmfstorage.lucene.QmfObjectsStorageLucene
 import zio.*
 import zio.Console.printLine
 import zio.http.{Server, SocketDecoder, WebSocketConfig}
@@ -21,15 +32,8 @@ object Main extends ZIOAppDefault:
         )
 
   override def run: ZIO[Environment & ZIOAppArgs & Scope, Any, Any] =
-    val repositoryLayer: ULayer[Repository] = LuceneRepository.layer
-    val brokerQueueLayer: ULayer[Queue[OutgoingMessage]] = ZLayer(Queue.sliding[OutgoingMessage](100))
-    val brokerPromises: ULayer[Ref[Map[Int, Promise[AgentError, IncomingMessage]]]] =
-      ZLayer.fromZIO(Ref.make(Map.empty[Int, Promise[AgentError, IncomingMessage]]))
-    val brokerLayer: ULayer[Broker] = (repositoryLayer ++ brokerQueueLayer ++ brokerPromises) >>> BrokerLive.layer
-    val jsonRpcLayer: ULayer[JsonRpcOutgoingMessagesStore] = ZLayer.succeed(JsonRpcOutgoingMessagesStore.live)
-    val outgoingMessageIdGenerator: ULayer[OutgoingMessageIdGenerator] = ZLayer.succeed(OutgoingMessageIdGenerator.live)
-
-    val httpConfigLayer: ULayer[Server.Config] = ZLayer.succeed(
+    // ZIO Http Server
+    val layerHttpConfig: ULayer[Server.Config] = ZLayer.succeed(
       Server.Config.default
         .port(8081)
         .webSocketConfig(
@@ -37,15 +41,37 @@ object Main extends ZIOAppDefault:
             .decoderConfig(SocketDecoder.default.maxFramePayloadLength(Int.MaxValue))
         )
     )
-    val nettyConfigLayer: ULayer[NettyConfig] = ZLayer.succeed(NettyConfig.default)
-    val serverLayer: TaskLayer[Server] = (nettyConfigLayer ++ httpConfigLayer) >>> Server.live
+    val layerNettyConfig: ULayer[NettyConfig] = ZLayer.succeed(NettyConfig.default)
+    val layerZIOServer: TaskLayer[Server] = (layerNettyConfig ++ layerHttpConfig) >>> Server.live
+    // QMF Objects Storage
+    val layerQmfObjectsStorage: ULayer[QmfObjectsStorage] = QmfObjectsStorageLucene.layer
+    // Agents registry
+    val agentsRegistryLayer: ULayer[AgentsRegistry] = AgentRegistryLive.layer
+    // JsonRPC
+    val pendingRequestsPromises: ULayer[Ref[Map[Int, Promise[OutgoingMessageError, IncomingMessage]]]] =
+      ZLayer(Ref.make(Map.empty[Int, Promise[OutgoingMessageError, IncomingMessage]]))
+    // Outgoing
+    val outgoingMessageIdGenerator: ULayer[OutgoingMessageIdGenerator] = OutgoingMessageIdGenerator.layer
+    val outgoingMessageHandler: ULayer[OutgoingMessageHandler] = pendingRequestsPromises >>> OutgoingMessageHandlerLive.live
+    val outgoingAgentTransport = outgoingMessageHandler ++ outgoingMessageIdGenerator
+    // Incoming
+    val incomingMessageHandlerLayer = (layerQmfObjectsStorage ++ pendingRequestsPromises) >>> IncomingMessageHandlerLive.layer
+    val outgoingMessagesStorage: ULayer[OutgoingMessagesStorage] = ZLayer(OutgoingMessagesStorage.live)
+    val incomingAgentTransport = incomingMessageHandlerLayer ++ outgoingMessagesStorage
 
-    val program = for
-      (httpStarted, shutdownSignal) <- server
+    val program: ZIO[
+      AgentsRegistry & IncomingMessageHandler & OutgoingMessagesStorage & OutgoingMessageIdGenerator & OutgoingMessageHandler &
+        QmfObjectsStorage & Server,
+      Throwable,
+      Unit
+    ] = for {
+      (httpStarted, shutdownSignal) <- qmfHttpServer
       _ <- httpStarted.await
       _ <- printLine("Server started 8081")
-      _ <- ctrlC
+      // _ <- ctrlC
       _ <- ZIO.never // TODO: should be clean up
-    yield ()
+    } yield ()
 
-    program.provideSome(repositoryLayer ++ brokerLayer ++ serverLayer ++ jsonRpcLayer ++ outgoingMessageIdGenerator)
+    program.provideSome(
+      layerZIOServer ++ layerQmfObjectsStorage ++ agentsRegistryLayer ++ outgoingAgentTransport ++ incomingAgentTransport
+    )
